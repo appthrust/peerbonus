@@ -1,0 +1,77 @@
+apiVersion: appthrust.io/v1alpha1
+kind: ApplicationStackDefinition
+metadata:
+  name: peerbonus
+spec:
+  access:
+    audiences:
+    - appthrust-platform-api
+    scopes:
+    - openid
+    - profile
+    - email
+  components:
+  - defaultValues:
+      credentialSlots:
+      - description: Bot User OAuth Token (xoxb-…) of the Peer Bonus Slack app. Posts
+          announcements and direct messages.
+        displayName: Slack bot token
+        env: PEERBONUS_SLACK_BOT_TOKEN
+        name: slack-bot-token
+        provider: Slack
+        required: false
+      - description: Verifies slash commands and interactions sent by Slack.
+        displayName: Slack signing secret
+        env: PEERBONUS_SLACK_SIGNING_SECRET
+        name: slack-signing-secret
+        provider: Slack
+        required: false
+      internalService: true
+      livenessProbePath: /healthz
+      minScale: 1
+      port: 8080
+      publicURLEnv: PEERBONUS_PUBLIC_URL
+      readinessProbePath: /readyz
+    definitionRef:
+      name: web-service
+      version: v1
+    id: web
+  - defaultValues:
+      provider: CNPG
+      storageSize: 2Gi
+    definitionRef:
+      name: postgresql
+      version: v1
+    id: database
+  connections:
+  - from: web
+    name: database
+    to: database
+  dependencies:
+  - definition: directory
+    installPolicy: Automatic
+    publicURLEnv: PEERBONUS_DIRECTORY_PUBLIC_URL
+    urlEnv: PEERBONUS_DIRECTORY_URL
+  display:
+    category: collaborate
+    description: Send points and thanks to colleagues every week; close each month
+      into a payroll-ready statement.
+    iconRef:
+      name: peerbonus
+    title: Peer Bonus
+  publish:
+    hostnameLabel: peerbonus
+  releaseIdentityEnvPrefix: PEERBONUS
+  updatePolicy:
+    allowed:
+    - pinned
+    - follow
+    default: pinned
+  # The publisher appends 0.2.0 with its built digest; keep the served floor unchanged.
+  versions:
+  - default: true
+    images:
+      web: ghcr.io/appthrust/platform/peerbonus@sha256:b573d94efc1ed4ae791031247ce723479c40d7c4ae08d5215f3d12a329e44ed5
+    name: 0.1.0
+    served: true
+    stream: "0.1"

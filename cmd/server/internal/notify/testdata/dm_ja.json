@@ -1,0 +1,25 @@
+{
+  "text": "<@UALICE> から 30 pt とメッセージが届きました\n\nThanks &amp; &lt;cheers&gt;\nGreat work!\nhttps://bonus.example.test/posts/post1",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "<@UALICE> から 30 pt とメッセージが届きました\n\nThanks &amp; &lt;cheers&gt;\nGreat work!"
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Peer Bonus で開く"
+          },
+          "url": "https://bonus.example.test/posts/post1"
+        }
+      ]
+    }
+  ]
+}

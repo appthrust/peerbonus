@@ -1,0 +1,25 @@
+{
+  "text": "You received 30 pt and a message from <@UALICE>\n\nThanks &amp; &lt;cheers&gt;\nGreat work!\nhttps://bonus.example.test/posts/post1",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "You received 30 pt and a message from <@UALICE>\n\nThanks &amp; &lt;cheers&gt;\nGreat work!"
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Open in Peer Bonus"
+          },
+          "url": "https://bonus.example.test/posts/post1"
+        }
+      ]
+    }
+  ]
+}

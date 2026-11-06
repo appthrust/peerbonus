@@ -1,0 +1,59 @@
+{
+  "text": "🎉 <@UALICE> → Bob &lt;Ops&gt; · 30 pt\nThanks &amp; &lt;cheers&gt;\nGreat work!\n#Teamwork #&lt;Learn&gt;\nClap (7): C &amp; D, &lt;@UEVIL&gt;, Eve\nhttps://bonus.example.test/posts/post1",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "🎉 <@UALICE> → Bob &lt;Ops&gt; · 30 pt"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "Thanks &amp; &lt;cheers&gt;\nGreat work!"
+      }
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "#Teamwork #&lt;Learn&gt;"
+        }
+      ]
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "Clap (7): C &amp; D, &lt;@UEVIL&gt;, Eve"
+        }
+      ]
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Clap (7)"
+          },
+          "action_id": "peerbonus_clap",
+          "value": "post1"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Open in Peer Bonus"
+          },
+          "url": "https://bonus.example.test/posts/post1"
+        }
+      ]
+    }
+  ]
+}

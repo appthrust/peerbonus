@@ -1,0 +1,2936 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Peer Bonus API",
+    "version": "v1",
+    "description": "All routes require the caller bearer and return Cache-Control: no-store. JSON mutations require application/json and at most 64 KiB. Errors include invalid_request, self_target, unknown_value, invalid_month (400); unauthenticated (401); forbidden, own_post (403); not_found, recipient_not_found (404); insufficient_points (with remaining and required), period_closed, month_not_ended, previous_month_open, statement_open, timezone_locked, slack_not_configured, slack_not_connected, slack_team_changed, slack_signing_secret_missing, slack_bot_not_in_channel (409); slack_error (502, detail contains the Slack error code); identity_unavailable, directory_unavailable, peerbonus_store_unavailable (503). Explicit Directory rejection status and code, including identity_conflict, pass through."
+  },
+  "x-appthrust-definition": "peerbonus",
+  "servers": [
+    {
+      "url": "/api/peerbonus/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "me",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "description": "Resolve the caller through Directory; known members remain available during Directory outages. Explicit Directory rejections retain their status and code. Returns the frozen or computed current period without creating it."
+      }
+    },
+    "/program": {
+      "get": {
+        "operationId": "getProgram",
+        "summary": "getProgram",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Program"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true
+      }
+    },
+    "/recipients": {
+      "get": {
+        "operationId": "getRecipients",
+        "summary": "Recent recipients, direct teams and everyone for the recipient picker",
+        "description": "Read-only aggregation with a 60-second per-subject Directory cache. Direct groups are ordered by path depth descending, then name; at most five teams are loaded. Candidates exclude the caller and carry merged known team groups. Recent recipients are the caller's distinct non-deleted post recipients, newest first, at most eight, and are never cached. Directory unavailable, absent or denied returns 200 with directoryAvailable=false, empty teams/everyone, and stored recent recipients. Other explicit Directory rejections retain their status and code. Everyone fetches Directory's maximum of 500 people, excludes the caller, and returns the first 100 alphabetically. Its total is exact below the upstream cap and a lower bound when all 500 upstream slots are filled.",
+        "x-appthrust-link": true,
+        "responses": {
+          "200": {
+            "description": "Recipient picker data, including degraded Directory availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipients"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members": {
+      "get": {
+        "operationId": "searchMembers",
+        "summary": "searchMembers",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10
+            }
+          }
+        ],
+        "description": "Read-only Directory search; omitted or empty q lists people alphabetically. Excludes the caller and does not create Member records. Candidate groups is an empty array because search does not load memberships."
+      }
+    },
+    "/members/{id}": {
+      "get": {
+        "operationId": "getMember",
+        "summary": "getMember",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/avatars/{personId}": {
+      "get": {
+        "operationId": "getAvatar",
+        "summary": "Relay a person's Directory profile picture",
+        "description": "Authenticated same-origin relay. The optional v query parameter is a browser cache key only; the current Directory picture is always returned. Directory 404 becomes not_found, absent or unavailable Directory becomes 503 directory_unavailable, and denied access becomes 403.",
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "personId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory picture, at most 1 MiB",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": ["private, max-age=86400"]
+                }
+              }
+            },
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts": {
+      "get": {
+        "operationId": "listPosts",
+        "summary": "listPosts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "received",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring of the message, the sender's or the recipient's display name.",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createPost",
+        "summary": "createPost",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePost"
+              }
+            }
+          }
+        },
+        "description": "Resolve the recipient through Directory, falling back to a known member only during unavailability. Idempotent replay returns the current Post with status 201, without creating another event. Points are bounded by the frozen current period maximum."
+      }
+    },
+    "/posts/{id}": {
+      "get": {
+        "operationId": "getPost",
+        "summary": "getPost",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deletePost",
+        "summary": "deletePost",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Team Admin only. Hides the post; open-month points are reversed, closed-month settlements remain unchanged. Content-Type: application/json is required."
+      }
+    },
+    "/posts/{id}/claps": {
+      "get": {
+        "operationId": "listClaps",
+        "summary": "listClaps",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClapList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Newest first, at most 50 claps."
+      },
+      "post": {
+        "operationId": "createClap",
+        "summary": "createClap",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClapResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "description": "No body. Content-Type: application/json is required. Costs 2 points, credits the sender and recipient 1 each in the clap month. Own posts are forbidden. Replay returns the existing Clap and current Post."
+      }
+    },
+    "/admin/program": {
+      "get": {
+        "operationId": "getAdminProgram",
+        "summary": "getAdminProgram",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramAdmin"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "description": "Team Admin only."
+      },
+      "patch": {
+        "operationId": "updateProgram",
+        "summary": "updateProgram",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramAdmin"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramPatch"
+              }
+            }
+          }
+        },
+        "description": "Team Admin only. Values replace the full list. Time zone locks when the ledger is nonempty; allowance and maximum apply to unfrozen periods."
+      }
+    },
+    "/admin/statements": {
+      "get": {
+        "operationId": "listStatements",
+        "summary": "listStatements",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "description": "Team Admin only. Oldest ledger month through the current month, newest first."
+      }
+    },
+    "/admin/statements/{month}": {
+      "get": {
+        "operationId": "getStatement",
+        "summary": "getStatement",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statement"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "month",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "description": "Team Admin only. Closed statements are frozen; open statements preview the current unit value and currency."
+      }
+    },
+    "/admin/statements/{month}/close": {
+      "post": {
+        "operationId": "closeStatement",
+        "summary": "closeStatement",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Statement"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "month",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "description": "Team Admin only; no body, Content-Type: application/json required. Idempotent. Closes ended months in order. Refreshes Directory names and emails in batches of at most 100; failed refresh leaves directoryRefreshed false."
+      }
+    },
+    "/admin/statements/{month}/export.csv": {
+      "get": {
+        "operationId": "exportStatement",
+        "summary": "exportStatement",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "month",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "description": "Team Admin only. Closed statements only (409 statement_open otherwise). UTF-8 BOM; header month,person_id,email,display_name,pending,points,unit_value,currency,amount. Attachment peerbonus-<month>.csv. Clap credits belong to the month of the clap."
+      }
+    },
+    "/inbox": {
+      "get": {
+        "operationId": "listInbox",
+        "summary": "listInbox",
+        "description": "Posts the caller received and claps on posts the caller sent or received (never the caller's own claps), newest first. `unread` is true for items newer than the caller's watermark.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inbox"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/inbox/seen": {
+      "post": {
+        "operationId": "markInboxSeen",
+        "summary": "markInboxSeen",
+        "description": "Moves the caller's inbox watermark to now; every current item becomes read.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSeen"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/insights": {
+      "get": {
+        "operationId": "getAdminInsights",
+        "summary": "getAdminInsights",
+        "description": "Team Admin only. One month's totals, per-value and per-ISO-week series, and the top five recipients and senders by points.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insights"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/network": {
+      "get": {
+        "operationId": "getAdminNetwork",
+        "summary": "getAdminNetwork",
+        "description": "Team Admin only. Monthly person-keyed connection graph and management signals. Directory people and groups are bounded to 500 each. An optional effective Directory group filters nodes and edges, never Project-wide degree or activity. Directory failure returns members only, no groups, and ignores the filter. This read creates no members or periods.",
+        "responses": {
+          "200": {
+            "description": "Success, including degraded Directory availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Network"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request: month must have the form YYYY-MM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not a Team Admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "group_not_found: Directory lists no group with the requested id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "required": false,
+            "description": "Directory group id; includes effective members, including inherited membership.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/members": {
+      "get": {
+        "operationId": "listAdminMembers",
+        "summary": "listAdminMembers",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Participation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "description": "Team Admin only. Every Directory person (at most 500) with the month's activity, received points descending then name; people who never gave or received appear with zeros and `member: null`. `directoryAvailable: false` degrades to the members who were active."
+      }
+    },
+    "/admin/slack": {
+      "get": {
+        "operationId": "getAdminSlack",
+        "summary": "Read Slack integration settings and delivery health",
+        "description": "Team Admin only. Credentials expose presence booleans, never secret values. State is unconfigured without a client, configured without a verified workspace, team_changed when lastError.code is team_changed, otherwise connected. Inbound is null until platform inbound discovery is available.",
+        "x-appthrust-link": true,
+        "responses": {
+          "200": {
+            "description": "Slack integration",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackIntegration"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchAdminSlack",
+        "summary": "Update Slack settings",
+        "description": "Team Admin only. Channel and flag changes require connected state. Channel IDs must resolve to a public channel; null clears the channel. announcePosts requires a channel. giveFromSlack requires a configured signing secret. Locale may be changed before connecting.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackSettingsPatch"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Updated integration",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackIntegration"}}}
+          },
+          "400": {
+            "description": "invalid_request: invalid channel, missing announce channel, or invalid locale",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "409": {
+            "description": "slack_not_connected or slack_signing_secret_missing",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "502": {
+            "description": "slack_error; detail is the Slack error code",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      }
+    },
+    "/admin/slack/verify": {
+      "post": {
+        "operationId": "verifyAdminSlack",
+        "summary": "Verify and fix the Slack workspace",
+        "description": "Team Admin only. Calls auth.test and fixes the workspace. A changed team returns detail.current and detail.token. force replaces the workspace, clears cached member Slack IDs and the announce channel. Success clears lastError and the channel list cache.",
+        "requestBody": {
+          "required": false,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackVerifyInput"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Verified integration",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackIntegration"}}}
+          },
+          "409": {
+            "description": "slack_not_configured or slack_team_changed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "502": {
+            "description": "slack_error; detail is the Slack error code",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      }
+    },
+    "/admin/slack/channels": {
+      "get": {
+        "operationId": "listAdminSlackChannels",
+        "summary": "List public Slack channels",
+        "description": "Team Admin only; requires connected state. Public, non-archived channels are cached for 60 seconds and filtered by a case-insensitive name prefix. Bot membership is informational; invite the bot before posting.",
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {"name": "q", "in": "query", "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 20, "default": 20}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel candidates",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackChannelList"}}}
+          },
+          "409": {
+            "description": "slack_not_connected",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "502": {
+            "description": "slack_error; detail is the Slack error code",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      }
+    },
+    "/admin/slack/test": {
+      "post": {
+        "operationId": "testAdminSlack",
+        "summary": "Send a test message to the announce channel",
+        "description": "Team Admin only. Requires a connected workspace and an announce channel; announcePosts need not be enabled. not_in_channel maps to slack_bot_not_in_channel with an instruction to /invite @Peer Bonus.",
+        "responses": {
+          "200": {
+            "description": "Test message sent",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackTestResult"}}}
+          },
+          "409": {
+            "description": "slack_not_connected or slack_bot_not_in_channel",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "502": {
+            "description": "slack_error; detail is the Slack error code",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      }
+    },
+    "/admin/slack/deliveries": {
+      "get": {
+        "operationId": "listAdminSlackDeliveries",
+        "summary": "List recent Slack deliveries",
+        "description": "Team Admin only. Newest first; an absent or empty state returns all states. Available without credentials.",
+        "x-appthrust-link": true,
+        "x-appthrust-result-path": "items",
+        "parameters": [
+          {"name": "state", "in": "query", "schema": {"type": "string", "enum": ["", "pending", "sent", "skipped", "failed"]}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 50}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent deliveries",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackDeliveryList"}}}
+          },
+          "default": {
+            "description": "Request failed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenAPI",
+        "summary": "Read this API contract",
+        "x-appthrust-link": true,
+        "responses": {
+          "200": {
+            "description": "OpenAPI document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "SlackIntegration": {
+        "type": "object",
+        "required": ["credential", "state", "workspace", "settings", "inbound", "lastError", "deliveries"],
+        "properties": {
+          "credential": {
+            "type": "object",
+            "required": ["botToken", "signingSecret"],
+            "properties": {"botToken": {"type": "boolean"}, "signingSecret": {"type": "boolean"}}
+          },
+          "state": {"type": "string", "enum": ["unconfigured", "configured", "connected", "team_changed"]},
+          "workspace": {
+            "type": "object",
+            "nullable": true,
+            "required": ["teamId", "teamName", "botUserId", "verifiedAt"],
+            "properties": {
+              "teamId": {"type": "string"},
+              "teamName": {"type": "string"},
+              "botUserId": {"type": "string"},
+              "verifiedAt": {"type": "string", "format": "date-time"}
+            }
+          },
+          "settings": {
+            "type": "object",
+            "required": ["announceChannel", "announcePosts", "dmRecipientOnPost", "giveFromSlack", "locale"],
+            "properties": {
+              "announceChannel": {
+                "type": "object",
+                "nullable": true,
+                "required": ["id", "name"],
+                "properties": {"id": {"type": "string"}, "name": {"type": "string"}}
+              },
+              "announcePosts": {"type": "boolean"},
+              "dmRecipientOnPost": {"type": "boolean"},
+              "giveFromSlack": {"type": "boolean"},
+              "locale": {"type": "string", "enum": ["ja", "en"]}
+            }
+          },
+          "inbound": {
+            "type": "object",
+            "nullable": true,
+            "required": ["url", "ready", "reason"],
+            "properties": {
+              "url": {"type": "string", "nullable": true},
+              "ready": {"type": "boolean"},
+              "reason": {"type": "string", "nullable": true}
+            }
+          },
+          "lastError": {
+            "type": "object",
+            "nullable": true,
+            "required": ["code", "at"],
+            "properties": {"code": {"type": "string"}, "at": {"type": "string", "format": "date-time", "nullable": true}}
+          },
+          "deliveries": {
+            "type": "object",
+            "required": ["pending", "failed24h", "sent24h"],
+            "properties": {"pending": {"type": "integer"}, "failed24h": {"type": "integer"}, "sent24h": {"type": "integer"}}
+          }
+        }
+      },
+      "SlackSettingsPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "announceChannelId": {"type": "string", "minLength": 1, "nullable": true},
+          "announcePosts": {"type": "boolean"},
+          "dmRecipientOnPost": {"type": "boolean"},
+          "giveFromSlack": {"type": "boolean"},
+          "locale": {"type": "string", "enum": ["ja", "en"]}
+        }
+      },
+      "SlackVerifyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {"force": {"type": "boolean", "default": false}}
+      },
+      "SlackChannelList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "isMember"],
+              "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "isMember": {"type": "boolean"}}
+            }
+          }
+        }
+      },
+      "SlackTestResult": {
+        "type": "object",
+        "required": ["ok", "ts"],
+        "properties": {"ok": {"type": "boolean", "enum": [true]}, "ts": {"type": "string"}}
+      },
+      "SlackDeliveryList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {"$ref": "#/components/schemas/SlackDelivery"}
+          }
+        }
+      },
+      "SlackDelivery": {
+        "type": "object",
+        "required": ["id", "kind", "postId", "state", "attempts", "lastError", "createdAt", "sentAt"],
+        "properties": {
+          "id": {"type": "integer", "format": "int64"},
+          "kind": {"type": "string", "enum": ["post_announce", "post_dm", "clap_update", "post_delete"]},
+          "postId": {"type": "string"},
+          "state": {"type": "string", "enum": ["pending", "sent", "skipped", "failed"]},
+          "attempts": {"type": "integer", "minimum": 0},
+          "lastError": {"type": "string", "nullable": true},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "sentAt": {"type": "string", "format": "date-time", "nullable": true}
+        }
+      },
+      "SlackTeamChangedDetail": {
+        "type": "object",
+        "required": ["current", "token"],
+        "properties": {
+          "current": {"$ref": "#/components/schemas/SlackTeam"},
+          "token": {"$ref": "#/components/schemas/SlackTeam"}
+        }
+      },
+      "SlackTeam": {
+        "type": "object",
+        "required": ["teamId", "teamName"],
+        "properties": {"teamId": {"type": "string"}, "teamName": {"type": "string"}}
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "Slack error code for slack_error, or workspace comparison for slack_team_changed.",
+            "oneOf": [
+              {"type": "string"},
+              {"$ref": "#/components/schemas/SlackTeamChangedDetail"}
+            ]
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "required": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "Value": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,32}$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Same-origin avatar relay URL with an escaped RFC3339 version cache key, or null when no picture version is known."
+          },
+          "directoryUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "personId",
+          "displayName",
+          "email",
+          "pending",
+          "avatarUrl",
+          "directoryUrl"
+        ]
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "groups": {
+            "type": "array",
+            "description": "Known team groups, merged across loaded teams; always an array, empty when unknown.",
+            "items": {
+              "$ref": "#/components/schemas/RecipientGroup"
+            }
+          }
+        },
+        "required": [
+          "personId",
+          "displayName",
+          "email",
+          "pending",
+          "avatarUrl",
+          "groups"
+        ]
+      },
+      "RecipientGroup": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "path": { "type": "string" }
+        },
+        "required": ["id", "name", "path"]
+      },
+      "RecipientTeam": {
+        "type": "object",
+        "properties": {
+          "group": { "$ref": "#/components/schemas/RecipientGroup" },
+          "members": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/Candidate" }
+          }
+        },
+        "required": ["group", "members"]
+      },
+      "RecipientEveryone": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of fetched eligible people before the 100-item display cap. Exact below Directory's 500-person fetch cap; a lower bound when that cap is filled."
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/Candidate" }
+          }
+        },
+        "required": ["total", "items"]
+      },
+      "Recipients": {
+        "type": "object",
+        "properties": {
+          "me": {
+            "type": "object",
+            "properties": {
+              "personId": {
+                "type": "string",
+                "description": "Directory person ID, or empty if Directory is unavailable and the caller has no stored Member."
+              },
+              "groups": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/RecipientGroup" }
+              }
+            },
+            "required": ["personId", "groups"]
+          },
+          "recent": {
+            "type": "array",
+            "maxItems": 8,
+            "items": { "$ref": "#/components/schemas/Candidate" }
+          },
+          "teams": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "$ref": "#/components/schemas/RecipientTeam" }
+          },
+          "everyone": { "$ref": "#/components/schemas/RecipientEveryone" },
+          "directoryAvailable": { "type": "boolean" }
+        },
+        "required": ["me", "recent", "teams", "everyone", "directoryAvailable"]
+      },
+      "Period": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowance": {
+            "type": "integer"
+          },
+          "maxPointsPerPost": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "startsAt",
+          "endsAt",
+          "allowance",
+          "maxPointsPerPost"
+        ]
+      },
+      "Program": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string"
+          },
+          "timeZoneLocked": {
+            "type": "boolean"
+          },
+          "weeklyAllowance": {
+            "type": "integer"
+          },
+          "maxPointsPerPost": {
+            "type": "integer"
+          },
+          "clapCost": {
+            "type": "integer",
+            "enum": [
+              2
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value"
+            }
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "timeZone",
+          "timeZoneLocked",
+          "weeklyAllowance",
+          "maxPointsPerPost",
+          "clapCost",
+          "values",
+          "updatedAt"
+        ]
+      },
+      "ProgramAdmin": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string"
+          },
+          "timeZoneLocked": {
+            "type": "boolean"
+          },
+          "weeklyAllowance": {
+            "type": "integer"
+          },
+          "maxPointsPerPost": {
+            "type": "integer"
+          },
+          "clapCost": {
+            "type": "integer",
+            "enum": [
+              2
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value"
+            }
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pointUnitValue": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeZone",
+          "timeZoneLocked",
+          "weeklyAllowance",
+          "maxPointsPerPost",
+          "clapCost",
+          "values",
+          "updatedAt",
+          "pointUnitValue",
+          "currency"
+        ]
+      },
+      "ProgramPatch": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string"
+          },
+          "weeklyAllowance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "maxPointsPerPost": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "pointUnitValue": {
+            "type": "string",
+            "pattern": "^[0-9]+(\\.[0-9]+)?$"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Value"
+            },
+            "maxItems": 20
+          }
+        },
+        "required": []
+      },
+      "Post": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sender": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "clapCount": {
+            "type": "integer"
+          },
+          "clapPoints": {
+            "type": "integer"
+          },
+          "clappedByMe": {
+            "type": "integer"
+          },
+          "period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "clappers": {
+            "type": "array",
+            "description": "The newest three members who clapped.",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sender",
+          "recipient",
+          "points",
+          "message",
+          "values",
+          "clapCount",
+          "clapPoints",
+          "clappedByMe",
+          "period",
+          "month",
+          "clappers",
+          "createdAt"
+        ]
+      },
+      "Clap": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "member",
+          "createdAt"
+        ]
+      },
+      "CreatePost": {
+        "type": "object",
+        "properties": {
+          "recipientPersonId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{1,32}$"
+            },
+            "maxItems": 3,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "recipientPersonId",
+          "points",
+          "message"
+        ]
+      },
+      "PeriodStats": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowance": {
+            "type": "integer"
+          },
+          "remaining": {
+            "type": "integer"
+          },
+          "sentPosts": {
+            "type": "integer"
+          },
+          "sentPoints": {
+            "type": "integer"
+          },
+          "claps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "startsAt",
+          "endsAt",
+          "allowance",
+          "remaining",
+          "sentPosts",
+          "sentPoints",
+          "claps"
+        ]
+      },
+      "MonthStats": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "receivedPoints": {
+            "type": "integer"
+          },
+          "receivedPosts": {
+            "type": "integer"
+          },
+          "sentPosts": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "receivedPoints",
+          "receivedPosts",
+          "sentPosts"
+        ]
+      },
+      "TotalStats": {
+        "type": "object",
+        "properties": {
+          "receivedPoints": {
+            "type": "integer"
+          },
+          "receivedPosts": {
+            "type": "integer"
+          },
+          "sentPosts": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "receivedPoints",
+          "receivedPosts",
+          "sentPosts"
+        ]
+      },
+      "MyStats": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/PeriodStats"
+          },
+          "month": {
+            "$ref": "#/components/schemas/MonthStats"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalStats"
+          }
+        },
+        "required": [
+          "period",
+          "month",
+          "total"
+        ]
+      },
+      "MemberStats": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "$ref": "#/components/schemas/MonthStats"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalStats"
+          },
+          "partners": {
+            "type": "object",
+            "description": "Top five by points over all time.",
+            "properties": {
+              "sentTo": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Partner"
+                }
+              },
+              "receivedFrom": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Partner"
+                }
+              }
+            },
+            "required": [
+              "sentTo",
+              "receivedFrom"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "description": "Received posts per value key over all time, posts descending.",
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            }
+          },
+          "months": {
+            "type": "array",
+            "description": "The current month and the five before it, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/MonthPoint"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "total",
+          "partners",
+          "values",
+          "months"
+        ]
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "roles": {
+            "type": "object",
+            "properties": {
+              "peerbonusAdmin": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "peerbonusAdmin"
+            ]
+          },
+          "program": {
+            "$ref": "#/components/schemas/Program"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/MyStats"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "unread": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unread"
+            ]
+          },
+          "directory": {
+            "type": "object",
+            "properties": {
+              "linked": {
+                "type": "boolean"
+              },
+              "publicUrl": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "linked",
+              "publicUrl"
+            ]
+          }
+        },
+        "required": [
+          "member",
+          "roles",
+          "program",
+          "period",
+          "stats",
+          "inbox",
+          "directory"
+        ]
+      },
+      "MemberResponse": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "groups": {
+            "type": "array",
+            "description": "The person's direct Directory groups; empty when Directory is unavailable.",
+            "items": {
+              "$ref": "#/components/schemas/RecipientGroup"
+            }
+          },
+          "stats": {
+            "$ref": "#/components/schemas/MemberStats"
+          }
+        },
+        "required": [
+          "member",
+          "groups",
+          "stats"
+        ]
+      },
+      "StatementLine": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "amount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "points",
+          "amount"
+        ]
+      },
+      "StatementSummary": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "totalPoints": {
+            "type": "integer"
+          },
+          "totalAmount": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "closed",
+          "closedAt",
+          "totalPoints",
+          "totalAmount",
+          "memberCount"
+        ]
+      },
+      "Statement": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "totalPoints": {
+            "type": "integer"
+          },
+          "totalAmount": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "integer"
+          },
+          "closedBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Member"
+              }
+            ],
+            "nullable": true
+          },
+          "pointUnitValue": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "directoryRefreshed": {
+            "type": "boolean"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatementLine"
+            }
+          },
+          "closeBlockers": {
+            "type": "array",
+            "description": "Why the month cannot be closed now; empty when it can (or already is).",
+            "items": {
+              "type": "string",
+              "enum": [
+                "month_not_ended",
+                "previous_month_open"
+              ]
+            }
+          },
+          "previousOpenMonth": {
+            "type": "string",
+            "description": "The earliest earlier month with ledger rows that is still open, when `previous_month_open` applies.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "month",
+          "closed",
+          "closedAt",
+          "totalPoints",
+          "totalAmount",
+          "memberCount",
+          "closedBy",
+          "pointUnitValue",
+          "currency",
+          "directoryRefreshed",
+          "lines",
+          "closeBlockers",
+          "previousOpenMonth"
+        ]
+      },
+      "CandidateList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ClapList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Clap"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StatementList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatementSummary"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PostList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Post"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ClapResult": {
+        "type": "object",
+        "properties": {
+          "clap": {
+            "$ref": "#/components/schemas/Clap"
+          },
+          "post": {
+            "$ref": "#/components/schemas/Post"
+          }
+        },
+        "required": [
+          "clap",
+          "post"
+        ]
+      },
+      "Participant": {
+        "type": "object",
+        "description": "One Directory person's activity in a month. `member` is null until they gave or received points.",
+        "properties": {
+          "personId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Directory picture URL, including for people who have no Peer Bonus member yet."
+          },
+          "member": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Member"
+              }
+            ],
+            "nullable": true
+          },
+          "sentPosts": {
+            "type": "integer"
+          },
+          "sentPoints": {
+            "type": "integer"
+          },
+          "receivedPosts": {
+            "type": "integer"
+          },
+          "receivedPoints": {
+            "type": "integer"
+          },
+          "clapsGiven": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "personId",
+          "displayName",
+          "email",
+          "pending",
+          "avatarUrl",
+          "member",
+          "sentPosts",
+          "sentPoints",
+          "receivedPosts",
+          "receivedPoints",
+          "clapsGiven"
+        ]
+      },
+      "ParticipationSummary": {
+        "type": "object",
+        "properties": {
+          "people": {
+            "type": "integer",
+            "description": "Directory people counted (members only when Directory is unavailable)."
+          },
+          "senders": {
+            "type": "integer"
+          },
+          "recipients": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "integer",
+            "description": "People who sent, received or clapped at least once in the month."
+          }
+        },
+        "required": [
+          "people",
+          "senders",
+          "recipients",
+          "active"
+        ]
+      },
+      "Participation": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "directoryAvailable": {
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ParticipationSummary"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Participant"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "directoryAvailable",
+          "summary",
+          "items"
+        ]
+      },
+      "Partner": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member",
+          "posts",
+          "points"
+        ]
+      },
+      "ValueCount": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "posts",
+          "points"
+        ]
+      },
+      "MonthPoint": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "receivedPoints": {
+            "type": "integer"
+          },
+          "receivedPosts": {
+            "type": "integer"
+          },
+          "sentPosts": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "receivedPoints",
+          "receivedPosts",
+          "sentPosts"
+        ]
+      },
+      "WeekPoint": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "claps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "startsAt",
+          "endsAt",
+          "posts",
+          "points",
+          "claps"
+        ]
+      },
+      "Insights": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer",
+            "description": "Points received in the month (post points plus clap credits), the statement's total."
+          },
+          "claps": {
+            "type": "integer"
+          },
+          "senders": {
+            "type": "integer"
+          },
+          "recipients": {
+            "type": "integer"
+          },
+          "values": {
+            "type": "array",
+            "description": "Posts per value key, posts descending; keys the Program no longer defines are included.",
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            }
+          },
+          "weeks": {
+            "type": "array",
+            "description": "Every ISO week overlapping the month, oldest first, including weeks with no activity.",
+            "items": {
+              "$ref": "#/components/schemas/WeekPoint"
+            }
+          },
+          "topRecipients": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/Partner"
+            }
+          },
+          "topSenders": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/Partner"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "posts",
+          "points",
+          "claps",
+          "senders",
+          "recipients",
+          "values",
+          "weeks",
+          "topRecipients",
+          "topSenders"
+        ]
+      },
+      "NetworkSignal": {
+        "type": "string",
+        "description": "Ordered management signals. Clients ignore unknown future values.",
+        "enum": [
+          "isolated",
+          "fewConnections",
+          "manyConnections",
+          "concentrated",
+          "declining",
+          "unclapped"
+        ]
+      },
+      "NetworkGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path"
+        ]
+      },
+      "NetworkThresholds": {
+        "type": "object",
+        "description": "Release constants echoed for signal explanations; clients do not hardcode these values.",
+        "properties": {
+          "manyConnections": {
+            "type": "integer",
+            "description": "manyConnections when degree is at least this value (8)."
+          },
+          "fewConnections": {
+            "type": "integer",
+            "description": "fewConnections when 0 < degree <= this value (2)."
+          },
+          "concentrationPosts": {
+            "type": "integer",
+            "description": "Minimum received posts for concentrated (5)."
+          },
+          "concentrationShare": {
+            "type": "number",
+            "description": "Minimum share of Project-wide posts for concentrated (0.2)."
+          },
+          "declineRatio": {
+            "type": "number",
+            "description": "declining when recent activity <= this ratio (0.5) times previous activity."
+          },
+          "declineMinimum": {
+            "type": "integer",
+            "description": "Minimum previous activity before decline is evaluated (4)."
+          }
+        },
+        "required": [
+          "manyConnections",
+          "fewConnections",
+          "concentrationPosts",
+          "concentrationShare",
+          "declineRatio",
+          "declineMinimum"
+        ]
+      },
+      "NetworkNode": {
+        "type": "object",
+        "description": "One unique Directory person or retained member. Nodes are sorted by connections descending, displayName, then personId.",
+        "properties": {
+          "personId": {
+            "type": "string"
+          },
+          "memberId": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Same-origin Directory avatar relay URL with version cache key, including Directory-only people."
+          },
+          "connections": {
+            "type": "integer",
+            "description": "Distinct counterparts in the calendar month, Project-wide even when the group filter drops their edges."
+          },
+          "sentPosts": {
+            "type": "integer"
+          },
+          "receivedPosts": {
+            "type": "integer"
+          },
+          "receivedPoints": {
+            "type": "integer",
+            "description": "Receive ledger total in the month, including clap credits and reversals."
+          },
+          "clapsGiven": {
+            "type": "integer"
+          },
+          "clapsReceived": {
+            "type": "integer",
+            "description": "Claps in the month on posts this person sent or received."
+          },
+          "unclappedPosts": {
+            "type": "integer",
+            "description": "Non-reversed received posts in the month with clap_count = 0."
+          },
+          "share": {
+            "type": "number",
+            "description": "receivedPosts / Project-wide window posts; zero when there are no posts."
+          },
+          "decline": {
+            "type": "object",
+            "nullable": true,
+            "description": "Sent posts plus claps given in the 14 days ending at asOf and the preceding 14 days, excluding reversed posts and their claps. Null unless previous >= thresholds.declineMinimum.",
+            "properties": {
+              "recent": {
+                "type": "integer"
+              },
+              "previous": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "recent",
+              "previous"
+            ]
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkSignal"
+            }
+          }
+        },
+        "required": [
+          "personId",
+          "memberId",
+          "displayName",
+          "email",
+          "pending",
+          "avatarUrl",
+          "connections",
+          "sentPosts",
+          "receivedPosts",
+          "receivedPoints",
+          "clapsGiven",
+          "clapsReceived",
+          "unclappedPosts",
+          "share",
+          "decline",
+          "signals"
+        ]
+      },
+      "NetworkEdge": {
+        "type": "object",
+        "description": "One unordered person pair, from < to. Both ends are response nodes. Posts join sender and recipient; each clap joins its giver to both post endpoints. Reversed posts and their claps are excluded.",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "posts": {
+            "type": "integer"
+          },
+          "claps": {
+            "type": "integer"
+          },
+          "points": {
+            "type": "integer",
+            "description": "Post points only, not clap credits."
+          },
+          "lastAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Newest post or clap between this pair in the month."
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "posts",
+          "claps",
+          "points",
+          "lastAt"
+        ]
+      },
+      "Network": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Now for the current program-time-zone month, otherwise the month's last instant."
+          },
+          "recentSince": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Current ISO week start in the program time zone for the current month, otherwise null."
+          },
+          "directoryAvailable": {
+            "type": "boolean"
+          },
+          "group": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkGroup"
+              }
+            ],
+            "nullable": true
+          },
+          "groups": {
+            "type": "array",
+            "maxItems": 500,
+            "description": "Directory groups, name order; empty when Directory is unavailable.",
+            "items": {
+              "$ref": "#/components/schemas/NetworkGroup"
+            }
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/NetworkThresholds"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "people": {
+                "type": "integer",
+                "description": "Number of response nodes; connected + isolated."
+              },
+              "connected": {
+                "type": "integer",
+                "description": "Nodes with Project-wide connections > 0."
+              },
+              "isolated": {
+                "type": "integer",
+                "description": "Nodes with no Project-wide connections."
+              },
+              "posts": {
+                "type": "integer",
+                "description": "Project-wide non-reversed posts in the month."
+              },
+              "claps": {
+                "type": "integer",
+                "description": "Project-wide claps in the month on non-reversed posts."
+              }
+            },
+            "required": [
+              "people",
+              "connected",
+              "isolated",
+              "posts",
+              "claps"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "description": "Sorted by from then to.",
+            "items": {
+              "$ref": "#/components/schemas/NetworkEdge"
+            }
+          }
+        },
+        "required": [
+          "month",
+          "asOf",
+          "recentSince",
+          "directoryAvailable",
+          "group",
+          "groups",
+          "thresholds",
+          "summary",
+          "nodes",
+          "edges"
+        ]
+      },
+      "InboxItem": {
+        "type": "object",
+        "description": "`kind: post`: `post` was sent to the caller, `actor` is its sender, `id` is the post id. `kind: clap`: `actor` clapped `post` (which the caller sent or received), `id` is the clap id.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "post",
+              "clap"
+            ]
+          },
+          "post": {
+            "$ref": "#/components/schemas/Post"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "post",
+          "actor",
+          "createdAt",
+          "unread"
+        ]
+      },
+      "Inbox": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxItem"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "seenAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "seenAt"
+        ]
+      },
+      "InboxSeen": {
+        "type": "object",
+        "properties": {
+          "seenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unread": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seenAt",
+          "unread"
+        ]
+      }
+    }
+  }
+}

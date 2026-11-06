@@ -1,0 +1,50 @@
+{
+  "text": "🎉 <@UALICE> → Bob &lt;Ops&gt; に 30 pt\nThanks &amp; &lt;cheers&gt;\nGreat work!\n#Teamwork #&lt;Learn&gt;\n拍手 (7)\nhttps://bonus.example.test/posts/post1",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "🎉 <@UALICE> → Bob &lt;Ops&gt; に 30 pt"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "Thanks &amp; &lt;cheers&gt;\nGreat work!"
+      }
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "#Teamwork #&lt;Learn&gt;"
+        }
+      ]
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "拍手 (7)"
+          },
+          "action_id": "peerbonus_clap",
+          "value": "post1"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Peer Bonus で開く"
+          },
+          "url": "https://bonus.example.test/posts/post1"
+        }
+      ]
+    }
+  ]
+}
