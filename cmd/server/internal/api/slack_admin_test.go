@@ -113,7 +113,7 @@ func slackAdminCall(t *testing.T, a *API, fn endpoint, method, path, body string
 	t.Helper()
 	r := httptest.NewRequest(method, "/api/peerbonus/v1"+path, strings.NewReader(body))
 	w := httptest.NewRecorder()
-	s := &request{r: r, w: w, now: a.now(), member: domain.Member{ID: "admin"}, access: platformclient.TeamAccess{Roles: platformclient.Roles{IsConsoleAdmin: true}}}
+	s := &request{r: r, w: w, now: a.now(), member: domain.Member{ID: "admin"}, access: platformclient.ProjectAccess{Roles: platformclient.Roles{IsConsoleAdmin: true}}}
 	result, code, err := a.admin(fn)(s)
 	if err != nil {
 		writeError(w, err)
