@@ -46,7 +46,7 @@ type request struct {
 	r       *http.Request
 	w       http.ResponseWriter
 	member  domain.Member
-	access  platformclient.TeamAccess
+	access  platformclient.ProjectAccess
 	bearer  string
 	subject string
 	now     time.Time

@@ -13,7 +13,7 @@ commands and interactions.
 
 Use Go 1.26 or newer and Bun 1.4.1. The server depends on the public
 [`github.com/appthrust/appserver-go`](https://github.com/appthrust/appserver-go)
-`v0.2.0` module, without a replacement or platform checkout. The shared launcher
+`v0.3.0` module, without a replacement or platform checkout. The shared launcher
 and translations use published GitHub Packages, not workspace packages.
 
 ```sh
@@ -80,6 +80,9 @@ and runs `/peerbonus-server` as user `65532` in distroless with port `8080` expo
 No JavaScript runtime or build-time token is included in the final image.
 
 ## Release
+
+Next release: **`v0.3.0`**, using effective Project IAM access from
+appserver-go v0.3.0 instead of legacy ownership-based roles.
 
 The existing served catalog version is `0.1.0` on stream `0.1`. The first
 independent release is **`0.2.0`**, on stream **`0.2`**. The committed catalog
