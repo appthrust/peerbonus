@@ -153,14 +153,12 @@ func newHarness(t *testing.T) *harness {
 		switch r.URL.Path {
 		case "/api/v1/projects/pj-test/app-installations/peerbonus":
 			httpx.WriteJSON(w, 200, map[string]any{"id": "peerbonus", "links": []any{}})
-		case "/api/v1/projects/pj-test":
-			httpx.WriteJSON(w, 200, map[string]string{"teamSlug": "test-team"})
-		case "/api/v1/teams":
+		case "/api/v1/projects/pj-test/access":
 			role := "Viewer"
 			if subjectOf(r.Header.Get("Authorization")) == "admin" {
 				role = "Admin"
 			}
-			httpx.WriteJSON(w, 200, map[string]any{"items": []any{map[string]string{"id": "team-id", "slug": "test-team", "role": role}}})
+			httpx.WriteJSON(w, 200, map[string]any{"member": true, "role": role})
 		default:
 			t.Errorf("unexpected platform route %s", r.URL.Path)
 			http.NotFound(w, r)

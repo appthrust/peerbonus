@@ -1,0 +1,103 @@
+locales:
+  en:
+    title: Peer Bonus
+    tagline: Thank colleagues with points every week and close each month into a statement payroll can use.
+    overview: |
+      Peer Bonus lets the people in a Project thank each other with a few points and a short message. Everyone gets a weekly allowance of points to give away, and at the end of each month an administrator closes the month and hands payroll a statement with the amount for each person.
+
+      Day to day, people open the timeline, pick a colleague from Directory, choose the points and up to three of the team's values, and write what they are thankful for. Every post appears on the shared timeline, where others can clap: a clap spends 2 of the clapper's points and adds 1 point each to the sender and the recipient. The timeline filters by value, month and keyword, and the inbox collects the posts and claps addressed to each person. Unused points do not carry over to the next week.
+
+      Each member page shows the points left this week, the points received this month and in total, the last six months, and who someone gives to and hears from most. Administrators set the weekly allowance, the per-post limit, the values, the time zone, and the amount and currency per point. Participation, insights and a network map show who is taking part, which values get recognised, and who may need a word. Months close oldest first; a closed month is frozen at its rate and its statement downloads as CSV.
+
+      Peer Bonus runs inside the Project and keeps its data in the Project's own database. People sign in with their organisation account, and the people they can thank come from Directory, which is installed together with Peer Bonus. People who are in Directory but have not signed in yet can still receive points; the points stay with them. Slack is optional: once a Slack app is connected, new posts are announced in a channel, recipients get a direct message, and people can give and clap from Slack.
+  ja:
+    title: ピアボーナス
+    tagline: 毎週のポイントで同僚に感謝を伝え、月末には給与担当に渡せる明細にまとめられます。
+    overview: |
+      ピアボーナスは、Project のメンバーどうしがポイントと短いメッセージで感謝を伝え合うアプリです。毎週配られるポイントを同僚に贈り、月末には管理者が月を締めて、1 人ごとの支払額をまとめた明細を給与担当に渡せます。
+
+      ふだんはタイムラインで相手を Directory から選び、ポイントとチームで決めたバリューを 3 つまで添えて、何に感謝しているかを書きます。投稿は全員のタイムラインに並び、ほかのメンバーが拍手できます。拍手には 2 pt かかり、贈った人ともらった人に 1 pt ずつ入ります。タイムラインはバリュー・月・キーワードで絞り込め、受信箱には自分あての投稿と拍手が届きます。使い残したポイントは翌週に繰り越しません。
+
+      メンバーのページでは、今週の残りポイント、今月と累計でもらったポイント、最近 6 か月の推移、よく贈る相手とよく贈ってくれる人が分かります。管理者は、1 人あたりの週の配布ポイント、1 投稿の上限、バリュー、タイムゾーン、1 pt あたりの金額と通貨を設定します。参加状況・インサイト・つながりマップでは、誰が参加しているか、どのバリューが認め合われているか、声をかけたい人は誰かを確かめられます。月は古い順に締め、締めた月は当時の単価で確定し、明細を CSV でダウンロードできます。
+
+      ピアボーナスは Project の中で動き、データも Project 内のデータベースに保存します。サインインには組織のアカウントを使い、贈る相手の一覧は一緒にインストールされる Directory から読み込みます。Directory に登録済みでまだサインインしていない人にも贈れて、ポイントはその人に残ります。Slack 連携は任意で、Slack アプリをつなぐと新しい投稿をチャンネルに告知し、受け取った人に DM を送り、Slack から贈ったり拍手したりできるようになります。
+highlights:
+  - screenshot: send
+    locales:
+      en:
+        title: Thanks with points and values
+        body: Pick a colleague, set the points with a preset or by hand, add up to three of the team's values and write a message. The form shows how many points will be left this week before anything is sent.
+      ja:
+        title: ポイントとバリューを添えて贈る
+        body: 相手を選び、ポイントをボタンか数値で決め、チームのバリューを 3 つまで付けてメッセージを書きます。送る前に、今週あと何 pt 残るかがフォームに表示されます。
+  - screenshot: timeline
+    locales:
+      en:
+        title: A timeline everyone can clap on
+        body: Every post appears on the shared timeline. A clap adds 1 point each to the sender and the recipient, and the timeline filters by value, month and keyword.
+      ja:
+        title: 全員で見るタイムラインと拍手
+        body: 投稿はすべてタイムラインに並びます。拍手すると贈った人ともらった人に 1 pt ずつ入り、バリュー・月・キーワードで投稿を絞り込めます。
+  - screenshot: balance
+    locales:
+      en:
+        title: Points left and received at a glance
+        body: Each member page shows the points left this week and when they reset, the points received this month and in total, the last six months, and the people someone gives to and hears from most.
+      ja:
+        title: 残りともらったポイントがひと目で分かる
+        body: メンバーのページには、今週の残りポイントとリセットまでの日数、今月と累計でもらったポイント、最近 6 か月の推移、よく贈る相手とよく贈ってくれる人が並びます。
+  - screenshot: close
+    locales:
+      en:
+        title: Close the month with a checklist
+        body: Before closing, the statement confirms that the month has ended and every earlier month is closed. Closing freezes the month at the current rate, and a closed month cannot be reopened.
+      ja:
+        title: 確認しながら月を締める
+        body: 締める前に、月が終わっているか、前の月がすべて締まっているかを明細の画面で確認できます。締めた月は当時の単価で確定し、再オープンはできません。
+  - screenshot: statement
+    locales:
+      en:
+        title: A CSV payroll can use
+        body: A closed month lists every recipient with points and amount, and downloads as CSV with one row per person, including email, points, rate, currency and amount.
+      ja:
+        title: 給与担当に渡せる CSV
+        body: 締めた月の明細には受け取った人ごとのポイントと金額が並びます。メール・ポイント・単価・通貨・金額を 1 人 1 行にした CSV でダウンロードできます。
+  - screenshot: network
+    locales:
+      en:
+        title: Notice who may need a word
+        body: The network map draws who exchanged posts and claps this month and points out people whose posts are concentrated, whose activity dropped sharply, who have few connections, or whose posts nobody has clapped yet.
+      ja:
+        title: 声をかけたい人に気づける
+        body: つながりマップで今月の投稿と拍手のやりとりを描き、受け取りが集中している人、利用が急に減った人、つながりが少ない人、まだ拍手のない投稿を受け取った人を示します。
+screenshots:
+  - name: timeline
+    file: timeline.webp
+    alt:
+      en: The Peer Bonus timeline in Japanese, with filters for scope, month, keyword and values, a send box, and posts showing recipient, points, message, value tags, claps and sender.
+      ja: ピアボーナスのタイムライン。表示範囲・月・キーワード・バリューの絞り込み、贈る欄、宛先・ポイント・メッセージ・バリュー・拍手・送り手が並ぶ投稿が見えます。
+  - name: send
+    file: send.webp
+    alt:
+      en: The send form with a recipient chosen, 50 pt selected, a thank-you message about an exhibition demo, two values ticked, and a note of the points left this week.
+      ja: 贈るフォーム。宛先が選ばれ、50 pt、展示会のデモ準備へのお礼メッセージ、2 つのバリューが選択され、送ったあとの今週の残り pt が表示されています。
+  - name: balance
+    file: balance.webp
+    alt:
+      en: A member page with the weekly remaining-points ring, points received this month and in total, posts received and sent, a six-month bar chart, and top partners.
+      ja: メンバーのページ。今週の残りポイントのリング、今月と累計でもらった pt、もらった投稿と贈った投稿の数、最近 6 か月の棒グラフ、よく贈る相手が並んでいます。
+  - name: close
+    file: close.webp
+    alt:
+      en: An open monthly statement with the before-closing checklist both ticked, a Close button, totals for points, amount, people and rate, and the recipient table.
+      ja: 締める前の月次明細。確認項目 2 つに済みの印が付き、「締める」ボタン、合計 pt・支払額・対象人数・単価、受け取った人の表があります。
+  - name: statement
+    file: statement.webp
+    alt:
+      en: A closed monthly statement marked closed with who closed it, a Download CSV button, totals, and each recipient's name, email, points and amount.
+      ja: 締め済みの月次明細。締めた人と日時、「CSV をダウンロード」ボタン、合計、受け取った人ごとの名前・メール・pt・金額が表示されています。
+  - name: network
+    file: network.webp
+    alt:
+      en: The admin network page with cards for people to look after (concentrated, sharp drop, few connections) beside a connection map of members linked by posts and claps.
+      ja: 管理画面のつながり。集中・利用の急減・つながりが少ない人のカードと、投稿と拍手で結ばれたメンバーのつながりマップが並んでいます。
