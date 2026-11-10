@@ -158,7 +158,7 @@ func newHarness(t *testing.T) *harness {
 			if subjectOf(r.Header.Get("Authorization")) == "admin" {
 				role = "Admin"
 			}
-			httpx.WriteJSON(w, 200, map[string]any{"member": true, "role": role})
+			httpx.WriteJSON(w, 200, map[string]any{"member": true, "roles": []string{role}, "actions": []string{}})
 		default:
 			t.Errorf("unexpected platform route %s", r.URL.Path)
 			http.NotFound(w, r)
