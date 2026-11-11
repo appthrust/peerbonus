@@ -41,6 +41,17 @@ export function setupSteps(slack: Pick<SlackAdmin, 'credential' | 'state' | 'set
   return steps
 }
 
+/**
+ * Why giving in a conversation cannot be switched on, with its explanation: the server refuses it without
+ * the signing secret, and without the inbound URL Slack has nowhere to send mentions and reactions.
+ * Null when nothing is missing.
+ */
+export function conversationBlocker(slack: Pick<SlackAdmin, 'credential' | 'inbound'>): MessageId | null {
+  if (!slack.credential.signingSecret) return 'peerbonus.slack.giveFromSlackLocked'
+  if (!slack.inbound?.url) return 'peerbonus.slack.conversation.noInbound'
+  return null
+}
+
 export const DELIVERY_STATES: readonly SlackDeliveryState[] = ['pending', 'sent', 'skipped', 'failed']
 
 export const DELIVERY_STATE_VIEWS: Record<SlackDeliveryState, { label: MessageId; tone: Tone }> = {

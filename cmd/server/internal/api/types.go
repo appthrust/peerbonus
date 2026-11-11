@@ -16,11 +16,14 @@ type slackIntegrationResponse struct {
 	State     domain.SlackState       `json:"state"`
 	Workspace *slackWorkspaceResponse `json:"workspace"`
 	Settings  struct {
-		AnnounceChannel   *slackChannelResponse `json:"announceChannel"`
-		AnnouncePosts     bool                  `json:"announcePosts"`
-		DMRecipientOnPost bool                  `json:"dmRecipientOnPost"`
-		GiveFromSlack     bool                  `json:"giveFromSlack"`
-		Locale            domain.SlackLocale    `json:"locale"`
+		AnnounceChannel     *slackChannelResponse `json:"announceChannel"`
+		AnnouncePosts       bool                  `json:"announcePosts"`
+		DMRecipientOnPost   bool                  `json:"dmRecipientOnPost"`
+		GiveFromSlack       bool                  `json:"giveFromSlack"`
+		GiveInConversation  bool                  `json:"giveInConversation"`
+		MentionPointChoices []int                 `json:"mentionPointChoices"`
+		ReactionRules       []slackReactionRule   `json:"reactionRules"`
+		Locale              domain.SlackLocale    `json:"locale"`
 	} `json:"settings"`
 	Inbound    *slackInboundResponse      `json:"inbound"`
 	LastError  *slackLastErrorResponse    `json:"lastError"`
@@ -43,6 +46,12 @@ type slackChannelCandidate struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	IsMember bool   `json:"isMember"`
+}
+
+type slackReactionRule struct {
+	Emoji    string  `json:"emoji"`
+	Points   int     `json:"points"`
+	ValueKey *string `json:"valueKey"`
 }
 
 type slackInboundResponse struct {
@@ -127,19 +136,20 @@ type programAdminResponse struct {
 	Currency       string `json:"currency"`
 }
 type postResponse struct {
-	ID          string           `json:"id"`
-	Sender      memberResponse   `json:"sender"`
-	Recipient   memberResponse   `json:"recipient"`
-	Points      int              `json:"points"`
-	Message     string           `json:"message"`
-	Values      []string         `json:"values"`
-	ClapCount   int              `json:"clapCount"`
-	ClapPoints  int              `json:"clapPoints"`
-	ClappedByMe int              `json:"clappedByMe"`
-	Clappers    []memberResponse `json:"clappers"`
-	Period      string           `json:"period"`
-	Month       string           `json:"month"`
-	CreatedAt   time.Time        `json:"createdAt"`
+	ID             string           `json:"id"`
+	Sender         memberResponse   `json:"sender"`
+	Recipient      memberResponse   `json:"recipient"`
+	Points         int              `json:"points"`
+	Message        string           `json:"message"`
+	Values         []string         `json:"values"`
+	ClapCount      int              `json:"clapCount"`
+	ClapPoints     int              `json:"clapPoints"`
+	ClappedByMe    int              `json:"clappedByMe"`
+	Clappers       []memberResponse `json:"clappers"`
+	Period         string           `json:"period"`
+	Month          string           `json:"month"`
+	CreatedAt      time.Time        `json:"createdAt"`
+	SlackPermalink *string          `json:"slackPermalink"`
 }
 type clapResponse struct {
 	ID        string         `json:"id"`
@@ -393,7 +403,7 @@ func (a *API) renderPost(p domain.Post) postResponse {
 	for _, member := range p.Clappers {
 		clappers = append(clappers, a.renderMember(member))
 	}
-	return postResponse{ID: p.ID, Sender: a.renderMember(p.Sender), Recipient: a.renderMember(p.Recipient), Points: p.Points, Message: p.Message, Values: values, ClapCount: p.ClapCount, ClapPoints: p.ClapPoints, ClappedByMe: p.ClappedByMe, Clappers: clappers, Period: p.PeriodKey, Month: p.MonthKey, CreatedAt: p.CreatedAt}
+	return postResponse{ID: p.ID, Sender: a.renderMember(p.Sender), Recipient: a.renderMember(p.Recipient), Points: p.Points, Message: p.Message, Values: values, ClapCount: p.ClapCount, ClapPoints: p.ClapPoints, ClappedByMe: p.ClappedByMe, Clappers: clappers, Period: p.PeriodKey, Month: p.MonthKey, CreatedAt: p.CreatedAt, SlackPermalink: p.SlackPermalink}
 }
 func (a *API) renderClap(c domain.Clap) clapResponse {
 	return clapResponse{ID: c.ID, Member: a.renderMember(c.Member), CreatedAt: c.CreatedAt}

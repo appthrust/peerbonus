@@ -6,8 +6,11 @@ statements. The Go server serves the React SPA, `/api/peerbonus/v1/*`, `/config`
 `/launcher`, `/healthz`, `/readyz`, and `/releasez` from one origin. PostgreSQL
 stores application data; Directory remains a separate app called over HTTP.
 The SPA uses the session cookie behind the OIDC edge and never handles tokens.
-Optional Slack credentials enable announcements, direct messages, and inbound
-commands and interactions.
+Optional Slack credentials enable announcements, direct messages, the
+`/peerbonus` command, and giving inside a conversation: mentioning the bot
+(`@Peer Bonus @recipient 30 message`; the bot asks for the amount when it is
+omitted) or adding an admin-chosen reaction. Slack reaches the server through
+the `slack` inbound endpoint declared in `catalog/entry.yaml` (`/slack/*`).
 
 ## Develop
 

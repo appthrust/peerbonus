@@ -185,6 +185,7 @@ describe('query cache helpers', () => {
     clapPoints: 0,
     clappedByMe: 0,
     clappers: [],
+    slackPermalink: null,
     period: '2026-W43',
     month: '2026-10',
     createdAt: '2026-10-19T00:00:00Z',

@@ -15,16 +15,17 @@ describe('Slack app manifest (design §8)', () => {
     expect(generateManifest({ inboundUrl: INBOUND, phaseB: false })).toEqual(generateManifest({ inboundUrl: null, phaseB: false }))
   })
 
-  test('Phase B: /peerbonus, interactivity and options load URL under the inbound endpoint, plus the commands scope', () => {
+  test('Phase B: /peerbonus, interactivity, options load URL and events under the inbound endpoint, plus their scopes', () => {
     expect(generateManifest({ inboundUrl: `${INBOUND}/`, phaseB: true })).toEqual({
       display_information: { name: 'Peer Bonus', description: 'Send points and thanks to colleagues from Slack.' },
       features: {
         bot_user: { display_name: 'Peer Bonus', always_online: true },
         slash_commands: [{ command: '/peerbonus', url: `${INBOUND}/commands`, description: 'Send points and thanks', usage_hint: '[balance]' }],
       },
-      oauth_config: { scopes: { bot: ['chat:write', 'channels:read', 'users:read', 'users:read.email', 'im:write', 'commands'] } },
+      oauth_config: { scopes: { bot: ['chat:write', 'channels:read', 'users:read', 'users:read.email', 'im:write', 'commands', 'app_mentions:read', 'reactions:read'] } },
       settings: {
         interactivity: { is_enabled: true, request_url: `${INBOUND}/interactions`, message_menu_options_url: `${INBOUND}/options` },
+        event_subscriptions: { request_url: `${INBOUND}/events`, bot_events: ['app_mention', 'reaction_added'] },
         org_deploy_enabled: false,
         socket_mode_enabled: false,
       },
@@ -42,5 +43,9 @@ describe('Slack app manifest (design §8)', () => {
     expect(text.endsWith('}\n')).toBe(true)
     expect(text).toContain('\n  "display_information": {')
     expect(decodeURIComponent(manifestHref(manifest).replace('data:application/json;charset=utf-8,', ''))).toBe(text)
+    // The download a Phase B admin gets names both events.
+    const phaseB = decodeURIComponent(manifestHref(generateManifest({ inboundUrl: INBOUND, phaseB: true })))
+    expect(phaseB).toContain('"app_mention"')
+    expect(phaseB).toContain('"reaction_added"')
   })
 })

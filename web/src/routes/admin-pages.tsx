@@ -142,6 +142,8 @@ export const adminSlackRoute = createRoute({
       context.queryClient.ensureQueryData(slackQuery),
       context.queryClient.ensureQueryData(configQuery),
       context.queryClient.ensureQueryData(slackDeliveriesQuery(null)),
+      // The conversation card checks points and values against the Program.
+      context.queryClient.ensureQueryData(adminProgramQuery),
     ])
   },
   component: SlackPage,

@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,10 +16,11 @@ import (
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
 )
 
-// SlackOptions contains process-wide credentials, never persisted by the API.
+// SlackOptions contains process-wide credentials and platform discovery configuration.
 type SlackOptions struct {
 	Client                  *slack.Client
 	SigningSecretConfigured bool
+	PlatformAPIURL          string
 }
 
 type slackAdminClient interface {
@@ -26,12 +30,77 @@ type slackAdminClient interface {
 }
 
 type slackAdminStore interface {
+	Program(context.Context) (domain.Program, error)
 	SlackIntegration(context.Context) (domain.SlackIntegration, error)
 	UpdateSlackSettings(context.Context, store.SlackSettingsPatch, time.Time) (domain.SlackIntegration, error)
 	FixSlackWorkspace(context.Context, domain.SlackWorkspace, bool, time.Time) (domain.SlackIntegration, error)
 	SetSlackLastError(context.Context, *string, time.Time) error
 	ListSlackDeliveries(context.Context, string, int) ([]domain.SlackDelivery, error)
 	SlackDeliveryStats(context.Context, time.Time) (domain.SlackDeliveryStats, error)
+}
+
+type slackInboundClient struct {
+	url  string
+	http *http.Client
+}
+
+func newSlackInboundClient(origin, projectID string, transport http.RoundTripper) *slackInboundClient {
+	if transport == nil {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+	return &slackInboundClient{
+		url: strings.TrimRight(origin, "/") + "/api/v1/projects/" + url.PathEscape(projectID) + "/inbound-endpoints/peerbonus-slack",
+		http: &http.Client{Transport: transport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}},
+	}
+}
+
+func (a *API) discoverSlackInbound(s *request) *slackInboundResponse {
+	if a.slackInbound == nil {
+		return nil
+	}
+	r, err := http.NewRequestWithContext(s.r.Context(), http.MethodGet, a.slackInbound.url, nil)
+	if err != nil {
+		return &slackInboundResponse{Reason: new("platform_unavailable")}
+	}
+	r.Header.Set("Authorization", s.bearer)
+	r.Header.Set("Accept", "application/json")
+	response, err := a.slackInbound.http.Do(r)
+	if err != nil {
+		return &slackInboundResponse{Reason: new("platform_unavailable")}
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if response.StatusCode != http.StatusOK {
+		return &slackInboundResponse{Reason: new("platform_unavailable")}
+	}
+	var endpoint struct {
+		URL        string `json:"url"`
+		Ready      bool   `json:"ready"`
+		Conditions []struct {
+			Type   string `json:"type"`
+			Reason string `json:"reason"`
+		} `json:"conditions"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&endpoint); err != nil {
+		return &slackInboundResponse{Reason: new("platform_unavailable")}
+	}
+	result := &slackInboundResponse{Ready: endpoint.Ready}
+	if endpoint.URL != "" {
+		result.URL = &endpoint.URL
+	}
+	for _, condition := range endpoint.Conditions {
+		if condition.Type == "Ready" {
+			if condition.Reason != "" {
+				result.Reason = &condition.Reason
+			}
+			break
+		}
+	}
+	return result
 }
 
 type slackAPIError struct {
@@ -81,21 +150,31 @@ func (a *API) slackResponse(s *request, integration domain.SlackIntegration) (an
 	result.Settings.AnnouncePosts = integration.AnnouncePosts
 	result.Settings.DMRecipientOnPost = integration.DMRecipientOnPost
 	result.Settings.GiveFromSlack = integration.GiveFromSlack
+	result.Settings.GiveInConversation = integration.GiveInConversation
+	result.Settings.MentionPointChoices = integration.MentionPointChoices
+	result.Settings.ReactionRules = make([]slackReactionRule, 0, len(integration.ReactionRules))
+	for _, rule := range integration.ReactionRules {
+		result.Settings.ReactionRules = append(result.Settings.ReactionRules, slackReactionRule(rule))
+	}
 	result.Settings.Locale = integration.Locale
 	if integration.LastErrorCode != nil {
 		result.LastError = &slackLastErrorResponse{Code: *integration.LastErrorCode, At: integration.LastErrorAt}
 	}
 	result.Deliveries = slackDeliveryStatsResponse(stats)
+	result.Inbound = a.discoverSlackInbound(s)
 	return result, 200, nil
 }
 
 func (a *API) patchSlack(s *request) (any, int, error) {
 	var input struct {
-		AnnounceChannelID json.RawMessage     `json:"announceChannelId"`
-		AnnouncePosts     *bool               `json:"announcePosts"`
-		DMRecipientOnPost *bool               `json:"dmRecipientOnPost"`
-		GiveFromSlack     *bool               `json:"giveFromSlack"`
-		Locale            *domain.SlackLocale `json:"locale"`
+		AnnounceChannelID   json.RawMessage      `json:"announceChannelId"`
+		AnnouncePosts       *bool                `json:"announcePosts"`
+		DMRecipientOnPost   *bool                `json:"dmRecipientOnPost"`
+		GiveFromSlack       *bool                `json:"giveFromSlack"`
+		GiveInConversation  *bool                `json:"giveInConversation"`
+		MentionPointChoices *[]int               `json:"mentionPointChoices"`
+		ReactionRules       *[]slackReactionRule `json:"reactionRules"`
+		Locale              *domain.SlackLocale  `json:"locale"`
 	}
 	if err := decode(s, &input); err != nil {
 		return nil, 0, err
@@ -107,13 +186,35 @@ func (a *API) patchSlack(s *request) (any, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	if (input.AnnounceChannelID != nil || input.AnnouncePosts != nil || input.DMRecipientOnPost != nil || input.GiveFromSlack != nil) && a.slackState(integration) != domain.SlackStateConnected {
+	if (input.AnnounceChannelID != nil || input.AnnouncePosts != nil || input.DMRecipientOnPost != nil || input.GiveFromSlack != nil || input.GiveInConversation != nil) && a.slackState(integration) != domain.SlackStateConnected {
 		return nil, 0, slackNotConnected()
 	}
-	if input.GiveFromSlack != nil && *input.GiveFromSlack && !a.slackSigningSecretConfigured {
+	if ((input.GiveFromSlack != nil && *input.GiveFromSlack) || (input.GiveInConversation != nil && *input.GiveInConversation)) && !a.slackSigningSecretConfigured {
 		return nil, 0, httpx.Fail(409, "slack_signing_secret_missing", "Configure the Slack signing secret before enabling Slack input")
 	}
-	patch := store.SlackSettingsPatch{AnnouncePosts: input.AnnouncePosts, DMRecipientOnPost: input.DMRecipientOnPost, GiveFromSlack: input.GiveFromSlack, Locale: input.Locale}
+	patch := store.SlackSettingsPatch{AnnouncePosts: input.AnnouncePosts, DMRecipientOnPost: input.DMRecipientOnPost, GiveFromSlack: input.GiveFromSlack, GiveInConversation: input.GiveInConversation, MentionPointChoices: input.MentionPointChoices, Locale: input.Locale}
+	if input.MentionPointChoices != nil || input.ReactionRules != nil {
+		program, err := a.slackStore.Program(s.r.Context())
+		if err != nil {
+			return nil, 0, err
+		}
+		if input.MentionPointChoices != nil {
+			if err := domain.ValidateMentionPointChoices(*input.MentionPointChoices, program); err != nil {
+				return nil, 0, err
+			}
+		}
+		if input.ReactionRules != nil {
+			rules := make([]domain.SlackReactionRule, len(*input.ReactionRules))
+			for i, rule := range *input.ReactionRules {
+				rules[i] = domain.SlackReactionRule(rule)
+				rules[i].Emoji = domain.NormalizeSlackEmoji(rule.Emoji)
+			}
+			if err := domain.ValidateSlackReactionRules(rules, program); err != nil {
+				return nil, 0, err
+			}
+			patch.ReactionRules = &rules
+		}
+	}
 	if input.AnnounceChannelID != nil {
 		var id *string
 		if err := json.Unmarshal(input.AnnounceChannelID, &id); err != nil || (id != nil && *id == "") {

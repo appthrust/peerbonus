@@ -1,10 +1,12 @@
 // fakeslack runs the same Slack fake used by package tests. For example:
 //
 //	go run ./cmd/server/internal/slack/slacktest/cmd/fakeslack \
-//	  --listen 127.0.0.1:0 --user alice@example.com=U1 --channel C1=thanks:member
+//	  --listen 127.0.0.1:0 --user alice@example.com=U1 --bot bot@example.com=UBOT \
+//	  --channel C1=thanks:member
 //
 // It prints URL=<origin> once. GET /_calls returns recorded calls, persistent
-// messages (including updates/deletions), and opened views, with auth redacted.
+// messages (including thread_ts, updates/deletions), and opened views, with auth
+// redacted. --bot registers a user whose users.info response has is_bot=true.
 package main
 
 import (
@@ -45,6 +47,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return errors.New("user must be email=UID")
 		}
 		fake.AddUser(email, id)
+		return nil
+	})
+	flags.Func("bot", "email=UID for a bot user (repeatable)", func(raw string) error {
+		email, id, ok := strings.Cut(raw, "=")
+		if !ok || email == "" || id == "" {
+			return errors.New("bot must be email=UID")
+		}
+		fake.AddBot(email, id)
 		return nil
 	})
 	flags.Func("channel", "id=name[:member] (repeatable; member, true, or false)", func(raw string) error {

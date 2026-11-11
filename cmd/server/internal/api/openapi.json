@@ -1040,7 +1040,7 @@
       "get": {
         "operationId": "getAdminSlack",
         "summary": "Read Slack integration settings and delivery health",
-        "description": "Team Admin only. Credentials expose presence booleans, never secret values. State is unconfigured without a client, configured without a verified workspace, team_changed when lastError.code is team_changed, otherwise connected. Inbound is null until platform inbound discovery is available.",
+        "description": "Team Admin only. Credentials expose presence booleans, never secret values. State is unconfigured without a client, configured without a verified workspace, team_changed when lastError.code is team_changed, otherwise connected. Inbound is discovered from the Platform API peerbonus-slack endpoint using the viewer's bearer: absent returns null; found returns its URL, generation-aware ready flag and Ready condition reason. Discovery failure returns {url:null,ready:false,reason:\"platform_unavailable\"} without failing this response.",
         "x-appthrust-link": true,
         "responses": {
           "200": {
@@ -1056,7 +1056,7 @@
       "patch": {
         "operationId": "patchAdminSlack",
         "summary": "Update Slack settings",
-        "description": "Team Admin only. Channel and flag changes require connected state. Channel IDs must resolve to a public channel; null clears the channel. announcePosts requires a channel. giveFromSlack requires a configured signing secret. Locale may be changed before connecting.",
+        "description": "Team Admin only. Channel and flag changes require connected state (409 slack_not_connected). Channel IDs must resolve to a public channel; null clears the channel. announcePosts requires a channel. Enabling giveFromSlack or giveInConversation requires a configured signing secret (409 slack_signing_secret_missing). Mention point choices contain 1-5 unique amounts. Reaction rules replace all existing rules, preserve order and contain at most 8 unique normalized emoji names. Emoji names are lowercased and stripped of surrounding colons and skin-tone modifiers. Amounts must be positive and no greater than the current Program maxPointsPerPost; non-null valueKey must exist in the current Program. Locale, point choices and rules may be changed before connecting.",
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackSettingsPatch"}}}
@@ -1067,7 +1067,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SlackIntegration"}}}
           },
           "400": {
-            "description": "invalid_request: invalid channel, missing announce channel, or invalid locale",
+            "description": "invalid_request: invalid channel, missing announce channel, invalid locale, invalid point choices or invalid reaction rules; unknown_value: a rule valueKey is absent from the current Program",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "409": {
@@ -1245,7 +1245,7 @@
           },
           "settings": {
             "type": "object",
-            "required": ["announceChannel", "announcePosts", "dmRecipientOnPost", "giveFromSlack", "locale"],
+            "required": ["announceChannel", "announcePosts", "dmRecipientOnPost", "giveFromSlack", "giveInConversation", "mentionPointChoices", "reactionRules", "locale"],
             "properties": {
               "announceChannel": {
                 "type": "object",
@@ -1256,12 +1256,16 @@
               "announcePosts": {"type": "boolean"},
               "dmRecipientOnPost": {"type": "boolean"},
               "giveFromSlack": {"type": "boolean"},
+              "giveInConversation": {"type": "boolean"},
+              "mentionPointChoices": {"$ref": "#/components/schemas/SlackMentionPointChoices"},
+              "reactionRules": {"type": "array", "maxItems": 8, "items": {"$ref": "#/components/schemas/SlackReactionRule"}},
               "locale": {"type": "string", "enum": ["ja", "en"]}
             }
           },
           "inbound": {
             "type": "object",
             "nullable": true,
+            "description": "Null when discovery is not configured or the endpoint is absent. Platform failures return url=null, ready=false and reason=platform_unavailable.",
             "required": ["url", "ready", "reason"],
             "properties": {
               "url": {"type": "string", "nullable": true},
@@ -1282,6 +1286,25 @@
           }
         }
       },
+      "SlackMentionPointChoices": {
+        "type": "array",
+        "description": "Unique amounts offered when a mention omits points, each no greater than the current Program maxPointsPerPost when patched.",
+        "minItems": 1,
+        "maxItems": 5,
+        "uniqueItems": true,
+        "items": {"type": "integer", "minimum": 1},
+        "example": [10, 30, 50]
+      },
+      "SlackReactionRule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["emoji", "points"],
+        "properties": {
+          "emoji": {"type": "string", "description": "Normalized to lowercase without colons or skin-tone modifiers; the resulting name must be unique across rules and contain 1-100 characters without whitespace.", "example": "pb-10"},
+          "points": {"type": "integer", "minimum": 1, "description": "No greater than the current Program maxPointsPerPost when patched."},
+          "valueKey": {"type": "string", "nullable": true, "description": "Optional key of a current Program value; null assigns no value."}
+        }
+      },
       "SlackSettingsPatch": {
         "type": "object",
         "additionalProperties": false,
@@ -1290,6 +1313,9 @@
           "announcePosts": {"type": "boolean"},
           "dmRecipientOnPost": {"type": "boolean"},
           "giveFromSlack": {"type": "boolean"},
+          "giveInConversation": {"type": "boolean", "description": "Requires connected state; enabling also requires the signing secret."},
+          "mentionPointChoices": {"$ref": "#/components/schemas/SlackMentionPointChoices"},
+          "reactionRules": {"type": "array", "maxItems": 8, "description": "Replaces all rules in the supplied order; emoji names must be unique after normalization.", "items": {"$ref": "#/components/schemas/SlackReactionRule"}},
           "locale": {"type": "string", "enum": ["ja", "en"]}
         }
       },
@@ -1722,6 +1748,11 @@
           "message": {
             "type": "string"
           },
+          "slackPermalink": {
+            "type": "string",
+            "nullable": true,
+            "description": "Original Slack message URL for a conversation give; null for posts without a recorded permalink."
+          },
           "values": {
             "type": "array",
             "items": {
@@ -1764,6 +1795,7 @@
           "recipient",
           "points",
           "message",
+          "slackPermalink",
           "values",
           "clapCount",
           "clapPoints",

@@ -27,23 +27,43 @@ const testSecret = "inbound-test-secret"
 var testNow = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 
 type fakeStore struct {
-	integration            domain.SlackIntegration
-	integrationErr         error
-	member                 domain.Member
-	memberErr              error
-	memberLookups          []string
-	program                domain.Program
-	period                 domain.Period
-	remaining              int
-	remainingMember        string
-	remainingNow           time.Time
-	posts                  []store.CreatePostInput
-	postErr                error
-	claps                  []store.CreateClapInput
-	clapErr                error
-	searchQ, searchExclude string
-	searchLimit            int
-	members                []domain.Member
+	integration             domain.SlackIntegration
+	integrationErr          error
+	member                  domain.Member
+	memberErr               error
+	memberLookups           []string
+	program                 domain.Program
+	period                  domain.Period
+	remaining               int
+	remainingMember         string
+	remainingNow            time.Time
+	posts                   []store.CreatePostInput
+	postErr                 error
+	claps                   []store.CreateClapInput
+	clapErr                 error
+	searchQ, searchExclude  string
+	searchLimit             int
+	members                 []domain.Member
+	slackMembers            map[string]domain.Member
+	emailMember             domain.Member
+	emailErr                error
+	emailLookups            []string
+	links                   []string
+	linkErr                 error
+	slackPosts              []store.CreateSlackPostsInput
+	slackClaps              []store.CreateSlackClapInput
+	replayed                bool
+	pending                 domain.SlackPendingGive
+	pendingCreates          []domain.SlackPendingGive
+	pendingReads            []string
+	pendingErr              error
+	pendingCreateErr        error
+	pendingDeletes          []string
+	pendingDeleteErr        error
+	announcePost            string
+	announceErr             error
+	announceLookups         []string
+	periodErr, remainingErr error
 }
 
 func (s *fakeStore) SlackIntegration(context.Context) (domain.SlackIntegration, error) {
@@ -51,10 +71,18 @@ func (s *fakeStore) SlackIntegration(context.Context) (domain.SlackIntegration, 
 }
 func (s *fakeStore) MemberBySlackUser(_ context.Context, user string) (domain.Member, error) {
 	s.memberLookups = append(s.memberLookups, user)
+	if s.slackMembers != nil {
+		member, ok := s.slackMembers[user]
+		if !ok {
+			return domain.Member{}, domain.ErrNotFound
+		}
+		return member, nil
+	}
 	return s.member, s.memberErr
 }
-func (s *fakeStore) MemberByEmail(context.Context, string) (domain.Member, error) {
-	panic("an inbound email must never establish identity")
+func (s *fakeStore) MemberByEmail(_ context.Context, email string) (domain.Member, error) {
+	s.emailLookups = append(s.emailLookups, email)
+	return s.emailMember, s.emailErr
 }
 func (s *fakeStore) MemberByID(context.Context, string) (domain.Member, error) {
 	panic("cached Slack identity already supplies the member")
@@ -73,20 +101,29 @@ func (s *fakeStore) CreateClap(_ context.Context, in store.CreateClapInput) (dom
 }
 func (s *fakeStore) Program(context.Context) (domain.Program, error) { return s.program, nil }
 func (s *fakeStore) CurrentPeriod(context.Context, time.Time) (domain.Period, error) {
-	return s.period, nil
+	return s.period, s.periodErr
 }
 func (s *fakeStore) GiveRemaining(_ context.Context, member string, now time.Time) (int, error) {
 	s.remainingMember, s.remainingNow = member, now
-	return s.remaining, nil
+	return s.remaining, s.remainingErr
 }
 
 type fakeSlack struct {
-	trigger       string
-	view          json.RawMessage
-	deadline      time.Time
-	openErr       error
-	channel, user string
-	messages      []slack.Message
+	trigger               string
+	view                  json.RawMessage
+	deadline              time.Time
+	openErr               error
+	channel, user         string
+	messages              []slack.Message
+	userInfo              map[string]slack.User
+	userInfoErr           error
+	userInfoCalls         []string
+	posted                []slack.Message
+	postChannels          []string
+	postErr, ephemeralErr error
+	permalink             string
+	permalinkErr          error
+	permalinkCalls        []string
 }
 
 func (s *fakeSlack) OpenView(ctx context.Context, trigger string, view json.RawMessage) error {
@@ -97,7 +134,7 @@ func (s *fakeSlack) OpenView(ctx context.Context, trigger string, view json.RawM
 func (s *fakeSlack) PostEphemeral(_ context.Context, channel, user string, message slack.Message) error {
 	s.channel, s.user = channel, user
 	s.messages = append(s.messages, message)
-	return nil
+	return s.ephemeralErr
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

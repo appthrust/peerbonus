@@ -7,12 +7,14 @@ import type { MessageId } from '../../../copy'
 import { useText } from '../../../i18n'
 import { Button, buttonClasses, CLOCK_TICK_MS, cn, ConfirmDialog, formatDateTime, Notice, PageHeader, useDocumentTitle, useNow } from '../../../ui'
 import { formatCount } from '../format'
-import { slackQuery, SLACK_KEY } from '../queries'
+import { adminProgramQuery, slackQuery, SLACK_KEY } from '../queries'
+import { ConversationSettingsCard } from './conversation-settings'
 import { DeliveriesCard } from './deliveries'
 import { generateManifest, manifestHref } from './manifest'
 import { Card, CopyField, ToneChip } from './parts'
 import { SlackActionError } from './slack-error'
 import { SlackSettingsCard } from './slack-settings'
+import { conversationKey, deliveryKey } from './slack-form'
 import { SLACK_ERROR_LABELS, setupSteps, STATE_VIEWS, type SetupStepId } from './slack-state'
 
 const SLACK_APPS_URL = 'https://api.slack.com/apps'
@@ -20,17 +22,20 @@ const MANIFEST_FILE = 'peerbonus-slack-manifest.json'
 
 /**
  * `/admin/slack`: one card per concern — the connection (state, workspace, verify), the setup guide
- * (folded once done), delivery settings, the Slack inbound endpoint (only once the platform projected
- * it, Phase B) and the delivery log.
+ * (folded once done), delivery settings, giving in a conversation (mentions and reaction emoji), the
+ * Slack inbound endpoint (only once the platform projected it, Phase B) and the delivery log.
  */
 export function SlackPage() {
   const { t } = useText()
   const { data: slack } = useSuspenseQuery(slackQuery)
   const { data: config } = useSuspenseQuery(configQuery)
+  const { data: program } = useSuspenseQuery(adminProgramQuery)
   const now = useNow(CLOCK_TICK_MS)
-  // Which stored settings a save returned: the remounted form shows its saved notice for them.
-  const [savedSettings, setSavedSettings] = useState<string | null>(null)
-  const settingsKey = JSON.stringify(slack.settings)
+  // Which card's stored settings a save returned: that card remounts (its key changed) and shows its saved notice.
+  // Each settings card is keyed by its own fields, so saving one keeps the other's unsaved edits.
+  const [savedKey, setSavedKey] = useState<string | null>(null)
+  const delivery = `delivery:${deliveryKey(slack.settings)}`
+  const conversation = `conversation:${conversationKey(slack.settings)}`
   useDocumentTitle(t('peerbonus.slack.title'))
 
   return (
@@ -39,7 +44,14 @@ export function SlackPage() {
       <div className="space-y-4">
         <StatusCard slack={slack} />
         <SetupGuide slack={slack} projectId={config.projectId} />
-        <SlackSettingsCard key={settingsKey} slack={slack} justSaved={savedSettings === settingsKey} onSaved={setSavedSettings} />
+        <SlackSettingsCard key={delivery} slack={slack} justSaved={savedKey === delivery} onSaved={(settings) => setSavedKey(`delivery:${deliveryKey(settings)}`)} />
+        <ConversationSettingsCard
+          key={conversation}
+          slack={slack}
+          program={program}
+          justSaved={savedKey === conversation}
+          onSaved={(settings) => setSavedKey(`conversation:${conversationKey(settings)}`)}
+        />
         {slack.inbound ? <InboundCard inbound={slack.inbound} /> : null}
         <DeliveriesCard now={now} />
       </div>

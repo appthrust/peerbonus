@@ -1,6 +1,7 @@
 // Slack integration wording (`/admin/slack`): connection state, the setup
-// guide, delivery settings, the inbound endpoint (Phase B) and the delivery
-// log. Product names (Slack, Dashboard, manifest, bot token) stay in English.
+// guide, delivery settings, giving in a conversation (mentions and reaction
+// emoji), the inbound endpoint (Phase B) and the delivery log. Product names
+// (Slack, Dashboard, manifest, bot token) stay in English.
 import { defineDashboardMessages } from '@appthrust/platform-dashboard-i18n'
 
 export const slackMessages = defineDashboardMessages({
@@ -182,11 +183,81 @@ export const slackMessages = defineDashboardMessages({
   },
   'peerbonus.slack.testSent': { defaultMessage: 'Test message sent to #{channel}.', translations: { ja: '#{channel} にテストメッセージを送りました。' } },
 
+  // Give in conversation (mentions and reaction emoji)
+  'peerbonus.slack.conversation.title': { defaultMessage: 'Give in conversation', translations: { ja: '会話の中で贈る' } },
+  'peerbonus.slack.conversation.lead': {
+    defaultMessage: 'Give points without leaving a Slack conversation: mention Peer Bonus, or react with an emoji chosen below.',
+    translations: { ja: 'Slack の会話から、メンションか絵文字で pt を贈れます。' },
+  },
+  'peerbonus.slack.conversation.toggle': { defaultMessage: 'Give with mentions and emoji', translations: { ja: 'メンションと絵文字で贈る' } },
+  'peerbonus.slack.conversation.toggleHint': {
+    defaultMessage: 'Mentions of @Peer Bonus and the emoji below give points.',
+    translations: { ja: '@Peer Bonus へのメンションと、下の絵文字で贈れます。' },
+  },
+  'peerbonus.slack.conversation.noInbound': {
+    defaultMessage: 'Slack has no URL to send to yet: the platform has not published the request URL.',
+    translations: { ja: 'Slack からのリクエスト URL がまだないため、使えません。' },
+  },
+  'peerbonus.slack.conversation.choices': { defaultMessage: 'Point choices', translations: { ja: 'pt の候補' } },
+  'peerbonus.slack.conversation.choicesHint': {
+    defaultMessage: 'When a mention has no points, the bot offers these as buttons. Up to {limit}, each 1–{max} pt.',
+    translations: { ja: 'pt を書かないメンションに、bot がボタンで出します。{limit} 個まで、各 1〜{max} pt。' },
+  },
+  'peerbonus.slack.conversation.choice': { defaultMessage: 'Choice {index}', translations: { ja: '候補 {index}' } },
+  'peerbonus.slack.conversation.addChoice': { defaultMessage: 'Add', translations: { ja: '追加' } },
+  'peerbonus.slack.conversation.removeChoice': { defaultMessage: 'Remove choice {index}', translations: { ja: '候補 {index} を外す' } },
+  'peerbonus.slack.conversation.rules': { defaultMessage: 'Reaction emoji', translations: { ja: '絵文字' } },
+  'peerbonus.slack.conversation.rulesHint': {
+    defaultMessage: 'Reacting to someone’s message with one of these gives them its points. Add custom emoji in Slack first.',
+    translations: { ja: '相手のメッセージにこの絵文字を付けると、その pt を贈ります。カスタム絵文字は先に Slack で追加します。' },
+  },
+  'peerbonus.slack.conversation.rulesEmpty': { defaultMessage: 'No emoji yet. Mentions work without them.', translations: { ja: 'まだありません。メンションだけでも贈れます。' } },
+  'peerbonus.slack.conversation.rule': { defaultMessage: 'Emoji {index}', translations: { ja: '絵文字 {index}' } },
+  'peerbonus.slack.conversation.emoji': { defaultMessage: 'Emoji name', translations: { ja: '絵文字の名前' } },
+  'peerbonus.slack.conversation.points': { defaultMessage: 'Points per reaction', translations: { ja: 'pt' } },
+  'peerbonus.slack.conversation.value': { defaultMessage: 'Value', translations: { ja: 'バリュー' } },
+  'peerbonus.slack.conversation.noValue': { defaultMessage: 'None', translations: { ja: 'なし' } },
+  'peerbonus.slack.conversation.removedValue': { defaultMessage: '#{key} (removed)', translations: { ja: '#{key}（削除済み）' } },
+  'peerbonus.slack.conversation.addRule': { defaultMessage: 'Add emoji', translations: { ja: '絵文字を追加' } },
+  'peerbonus.slack.conversation.removeRule': { defaultMessage: 'Remove emoji {index}', translations: { ja: '絵文字 {index} を削除' } },
+  'peerbonus.slack.conversation.rulesCount': { defaultMessage: '{count} of {max} emoji', translations: { ja: '{count} / {max}' } },
+  'peerbonus.slack.conversation.everyday': {
+    defaultMessage: 'People react with :{emoji}: every day, so points may be given by accident.',
+    translations: { ja: ':{emoji}: は普段よく使われるため、うっかり贈られることがあります。' },
+  },
+  'peerbonus.slack.conversation.error.pointsRange': { defaultMessage: 'Enter 1 to {max}.', translations: { ja: '1〜{max} で入力してください。' } },
+  'peerbonus.slack.conversation.error.choiceDuplicate': { defaultMessage: 'Already a choice.', translations: { ja: 'すでにあります。' } },
+  'peerbonus.slack.conversation.error.emojiRequired': { defaultMessage: 'Enter the emoji name.', translations: { ja: '絵文字の名前を入力してください。' } },
+  'peerbonus.slack.conversation.error.emojiInvalid': {
+    defaultMessage: 'Enter only the name, without spaces (e.g. pb-10).',
+    translations: { ja: 'スペースなしで名前だけを入力してください（例: pb-10）。' },
+  },
+  'peerbonus.slack.conversation.error.emojiDuplicate': { defaultMessage: 'This emoji is already listed.', translations: { ja: 'この絵文字はすでにあります。' } },
+  'peerbonus.slack.conversation.error.valueUnknown': {
+    defaultMessage: 'This value was removed from the program. Choose another.',
+    translations: { ja: 'このバリューは削除されました。選び直してください。' },
+  },
+  'peerbonus.slack.conversation.help': { defaultMessage: 'How to use', translations: { ja: '使い方' } },
+  'peerbonus.slack.conversation.helpMention': { defaultMessage: 'Mention the bot and the person, then points and a message:', translations: { ja: 'メンションで贈る:' } },
+  'peerbonus.slack.conversation.helpExample': { defaultMessage: '@Peer Bonus @person 30 message', translations: { ja: '@Peer Bonus @相手 30 メッセージ' } },
+  'peerbonus.slack.conversation.helpAsk': {
+    defaultMessage: 'Leave out the points and the bot asks how many, visible only to you.',
+    translations: { ja: 'pt を省くと、bot が本人にだけ見えるボタンで聞きます。' },
+  },
+  'peerbonus.slack.conversation.helpInvite': {
+    defaultMessage: 'It works only in channels Peer Bonus is in: run /invite @Peer Bonus there.',
+    translations: { ja: '使うチャンネルで /invite @Peer Bonus してください。bot がいるチャンネルだけで使えます。' },
+  },
+  'peerbonus.slack.conversation.helpReinstall': {
+    defaultMessage: 'First time: replace the app’s manifest with the one under Requests from Slack, then reinstall the app (it needs two more permissions).',
+    translations: { ja: '初めて使うときは、Slack アプリの manifest を「Slack からのリクエスト」のものに置き換え、アプリを再インストールしてください（権限が 2 つ増えます）。' },
+  },
+
   // Inbound (Phase B)
   'peerbonus.slack.inbound.title': { defaultMessage: 'Requests from Slack', translations: { ja: 'Slack からのリクエスト' } },
   'peerbonus.slack.inbound.lead': {
-    defaultMessage: 'Slack sends the /peerbonus command and button presses to this URL. The manifest below already points there.',
-    translations: { ja: 'Slack は /peerbonus コマンドとボタン操作をこの URL に送ります。下の manifest は設定済みです。' },
+    defaultMessage: 'Slack sends the /peerbonus command, button presses, mentions and reactions to this URL. The manifest below already points there.',
+    translations: { ja: 'Slack は /peerbonus コマンド、ボタン操作、メンション、リアクションをこの URL に送ります。下の manifest は設定済みです。' },
   },
   'peerbonus.slack.inbound.url': { defaultMessage: 'Request URL', translations: { ja: 'リクエスト URL' } },
   'peerbonus.slack.inbound.ready': { defaultMessage: 'Ready', translations: { ja: '受付中' } },
@@ -195,8 +266,8 @@ export const slackMessages = defineDashboardMessages({
   'peerbonus.slack.inbound.reason': { defaultMessage: 'Reason: {reason}', translations: { ja: '理由: {reason}' } },
   'peerbonus.slack.inbound.download': { defaultMessage: 'Download manifest with commands (JSON)', translations: { ja: 'コマンド付き manifest をダウンロード（JSON）' } },
   'peerbonus.slack.inbound.downloadHint': {
-    defaultMessage: 'In the Slack app’s settings, replace App Manifest with this file.',
-    translations: { ja: 'Slack アプリの設定で、App Manifest をこのファイルの内容に置き換えます。' },
+    defaultMessage: 'In the Slack app’s settings, replace App Manifest with this file. When it adds permissions, reinstall the app to the workspace.',
+    translations: { ja: 'Slack アプリの設定で、App Manifest をこのファイルの内容に置き換えます。権限が増えたときは、アプリを再インストールしてください。' },
   },
 
   // Delivery log

@@ -107,7 +107,7 @@ func peerbonusHandler(upstreamURL, projectID string) (*pending.Handler, *pending
 			inbound.Swap(slackinbound.New(slackinbound.Options{Store: database, Slack: client, SigningSecret: secret, PublicURL: publicURL, Now: time.Now}))
 			closer = &peerbonusStore{Store: database, workerDone: workerDone}
 		}
-		peerbonus.Swap(api.New(database, auth, platform, links, directoryPublicURL, api.SlackOptions{Client: client, SigningSecretConfigured: secret != ""}))
+		peerbonus.Swap(api.New(database, auth, platform, links, directoryPublicURL, api.SlackOptions{Client: client, SigningSecretConfigured: secret != "", PlatformAPIURL: upstreamURL}))
 		return closer, nil
 	})
 	return peerbonus, inbound, stop, nil

@@ -85,4 +85,15 @@ describe('post card', () => {
     expect(detail).not.toContain(`href="/posts/${post.id}"`)
     expect(detail).toContain('text-lg')
   })
+
+  test('a post given in Slack links its original message in a new tab; a web post has no such link', async () => {
+    const me = await mockMe()
+    const post = (await mockPosts())[0]!
+    const permalink = 'https://acme.slack.com/archives/C0KUDOS/p1760929200000100'
+    const html = render(<PostCard post={{ ...post, slackPermalink: permalink }} />, me)
+    expect(html).toContain(`<a href="${permalink}" target="_blank" rel="noreferrer"`)
+    expect(text(html)).toContain('Slack の元メッセージ')
+    expect(text(render(<PostCard post={{ ...post, slackPermalink: permalink }} />, me, 'en'))).toContain('Original Slack message')
+    expect(render(<PostCard post={{ ...post, slackPermalink: null }} />, me)).not.toContain('Slack の元メッセージ')
+  })
 })

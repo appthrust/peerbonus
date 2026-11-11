@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
+	"github.com/lib/pq"
 )
 
 // SlackSettingsPatch distinguishes an unchanged channel from an explicitly cleared one.
@@ -14,6 +15,9 @@ type SlackSettingsPatch struct {
 	AnnounceChannel                                 **domain.SlackChannel
 	AnnouncePosts, DMRecipientOnPost, GiveFromSlack *bool
 	Locale                                          *domain.SlackLocale
+	GiveInConversation                              *bool
+	MentionPointChoices                             *[]int
+	ReactionRules                                   *[]domain.SlackReactionRule
 }
 
 func (s *Store) SlackIntegration(ctx context.Context) (out domain.SlackIntegration, err error) {
@@ -24,12 +28,13 @@ func (s *Store) SlackIntegration(ctx context.Context) (out domain.SlackIntegrati
 func (tx *Tx) slackIntegration() (out domain.SlackIntegration, err error) {
 	var teamID, teamName, botUserID, enterpriseID, verifiedBy, channelID, channelName sql.NullString
 	var verifiedAt sql.NullTime
+	var choices pq.Int64Array
 	err = tx.SQL.QueryRowContext(tx.Context, `SELECT team_id,team_name,bot_user_id,enterprise_id,verified_at,verified_by,
  announce_channel_id,announce_channel_name,announce_posts,dm_recipient_on_post,give_from_slack,locale,
- last_error_code,last_error_at,updated_at FROM slack_integration WHERE id=1`).Scan(
+ give_in_conversation,mention_point_choices,last_error_code,last_error_at,updated_at FROM slack_integration WHERE id=1`).Scan(
 		&teamID, &teamName, &botUserID, &enterpriseID, &verifiedAt, &verifiedBy,
 		&channelID, &channelName, &out.AnnouncePosts, &out.DMRecipientOnPost, &out.GiveFromSlack, &out.Locale,
-		&out.LastErrorCode, &out.LastErrorAt, &out.UpdatedAt)
+		&out.GiveInConversation, &choices, &out.LastErrorCode, &out.LastErrorAt, &out.UpdatedAt)
 	if err != nil {
 		return
 	}
@@ -39,7 +44,24 @@ func (tx *Tx) slackIntegration() (out domain.SlackIntegration, err error) {
 	if channelID.Valid {
 		out.AnnounceChannel = &domain.SlackChannel{ID: channelID.String, Name: channelName.String}
 	}
-	return
+	out.MentionPointChoices = make([]int, len(choices))
+	for i, choice := range choices {
+		out.MentionPointChoices[i] = int(choice)
+	}
+	out.ReactionRules = []domain.SlackReactionRule{}
+	rows, err := tx.SQL.QueryContext(tx.Context, `SELECT emoji,points,value_key FROM slack_reaction_rules ORDER BY position`)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rule domain.SlackReactionRule
+		if err := rows.Scan(&rule.Emoji, &rule.Points, &rule.ValueKey); err != nil {
+			return out, err
+		}
+		out.ReactionRules = append(out.ReactionRules, rule)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) UpdateSlackSettings(ctx context.Context, patch SlackSettingsPatch, now time.Time) (out domain.SlackIntegration, err error) {
@@ -63,13 +85,31 @@ func (s *Store) UpdateSlackSettings(ctx context.Context, patch SlackSettingsPatc
 		if patch.Locale != nil {
 			current.Locale = *patch.Locale
 		}
+		if patch.GiveInConversation != nil {
+			current.GiveInConversation = *patch.GiveInConversation
+		}
+		if patch.MentionPointChoices != nil {
+			current.MentionPointChoices = *patch.MentionPointChoices
+		}
+		if patch.ReactionRules != nil {
+			if err := tx.Exec(`DELETE FROM slack_reaction_rules`); err != nil {
+				return err
+			}
+			for i, rule := range *patch.ReactionRules {
+				if err := tx.Exec(`INSERT INTO slack_reaction_rules (emoji,points,value_key,position) VALUES ($1,$2,$3,$4)`, rule.Emoji, rule.Points, rule.ValueKey, i); err != nil {
+					return err
+				}
+			}
+		}
 		var channelID, channelName *string
 		if current.AnnounceChannel != nil {
 			channelID, channelName = &current.AnnounceChannel.ID, &current.AnnounceChannel.Name
 		}
 		if err := tx.Exec(`UPDATE slack_integration SET announce_channel_id=$1,announce_channel_name=$2,
- announce_posts=$3,dm_recipient_on_post=$4,give_from_slack=$5,locale=$6,updated_at=$7 WHERE id=1`,
-			channelID, channelName, current.AnnouncePosts, current.DMRecipientOnPost, current.GiveFromSlack, current.Locale, now); err != nil {
+ announce_posts=$3,dm_recipient_on_post=$4,give_from_slack=$5,locale=$6,updated_at=$7,
+ give_in_conversation=$8,mention_point_choices=$9 WHERE id=1`,
+			channelID, channelName, current.AnnouncePosts, current.DMRecipientOnPost, current.GiveFromSlack, current.Locale, now,
+			current.GiveInConversation, pq.Array(current.MentionPointChoices)); err != nil {
 			return err
 		}
 		out, err = tx.slackIntegration()
@@ -92,6 +132,9 @@ func (s *Store) FixSlackWorkspace(ctx context.Context, ws domain.SlackWorkspace,
 				return err
 			}
 			if err := tx.Exec(`UPDATE slack_integration SET announce_channel_id=NULL,announce_channel_name=NULL WHERE id=1`); err != nil {
+				return err
+			}
+			if err := tx.Exec(`DELETE FROM slack_pending_gives`); err != nil {
 				return err
 			}
 		}

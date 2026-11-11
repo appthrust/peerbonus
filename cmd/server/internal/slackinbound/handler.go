@@ -1,6 +1,6 @@
-// Package slackinbound handles signed Slack commands, interactions, and options.
-// It reuses the application's ledger writes; Slack request replay protection is
-// process-local, while view/action idempotency is persisted by the store.
+// Package slackinbound handles signed Slack commands, interactions, options, and
+// conversation events. Ledger writes persist event idempotency; the signature
+// replay cache suppresses duplicate requests and releases failed event attempts.
 package slackinbound
 
 import (
@@ -29,6 +29,13 @@ type Store interface {
 	SearchMembers(context.Context, string, string, int) ([]domain.Member, error)
 	CreatePost(context.Context, store.CreatePostInput) (domain.Post, bool, error)
 	CreateClap(context.Context, store.CreateClapInput) (domain.Clap, domain.Post, bool, error)
+	CreateSlackPosts(context.Context, store.CreateSlackPostsInput) ([]domain.Post, bool, error)
+	CreateSlackClap(context.Context, store.CreateSlackClapInput) (domain.Clap, domain.Post, bool, error)
+	PostIDBySlackAnnounce(context.Context, string, string) (string, error)
+	CreateSlackPendingGive(context.Context, domain.SlackPendingGive, time.Time) (domain.SlackPendingGive, bool, error)
+	SlackPendingGive(context.Context, string, time.Time) (domain.SlackPendingGive, error)
+	DeleteSlackPendingGive(context.Context, string, string) error
+	LinkMemberSlackUser(context.Context, string, string, time.Time) error
 	Program(context.Context) (domain.Program, error)
 	CurrentPeriod(context.Context, time.Time) (domain.Period, error)
 	GiveRemaining(context.Context, string, time.Time) (int, error)
@@ -38,6 +45,9 @@ type Store interface {
 type Slack interface {
 	OpenView(context.Context, string, json.RawMessage) error
 	PostEphemeral(context.Context, string, string, slack.Message) error
+	PostMessage(context.Context, string, slack.Message) (string, error)
+	UserInfo(context.Context, string) (slack.User, error)
+	Permalink(context.Context, string, string) (string, error)
 }
 
 type Options struct {
@@ -61,10 +71,9 @@ type handler struct {
 	replays       replaySet
 }
 
-// New serves POST /slack/{commands,interactions,options}, without OIDC. The
-// feature gate runs before reading any body; enabled requests are limited to
-// 64 KiB and authenticated against the exact raw form body. Every operation
-// shares a 2.5 second context, including synchronous views.open.
+// New serves POST /slack/{commands,interactions,options,events}, without OIDC.
+// Gates run before reading the body; requests are limited to 64 KiB and signed
+// over the exact raw form or JSON body. Each request shares a 2.5 second budget.
 func New(o Options) http.Handler {
 	if o.Now == nil {
 		o.Now = time.Now
@@ -94,12 +103,22 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Slack integration unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !integration.GiveFromSlack || integration.Workspace == nil {
+	if integration.Workspace == nil {
 		http.NotFound(w, r)
 		return
 	}
 	switch r.URL.Path {
-	case "/slack/commands", "/slack/interactions", "/slack/options":
+	case "/slack/commands", "/slack/options":
+		if !integration.GiveFromSlack {
+			http.NotFound(w, r)
+			return
+		}
+	case "/slack/interactions":
+		if !integration.GiveFromSlack && !integration.GiveInConversation {
+			http.NotFound(w, r)
+			return
+		}
+	case "/slack/events":
 	default:
 		http.NotFound(w, r)
 		return
@@ -112,6 +131,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, ok := h.verify(w, r, h.now())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.URL.Path == "/slack/events" {
+		response := &eventResponse{ResponseWriter: w}
+		defer func() {
+			if response.status >= 500 {
+				h.replays.forget(r.Header.Get("X-Slack-Request-Timestamp") + ":" + r.Header.Get("X-Slack-Signature"))
+			}
+		}()
+		h.events(response, r, integration, body)
 		return
 	}
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -144,7 +173,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/slack/options" {
 		h.options(w, r, payload)
 	} else {
-		h.interact(w, r, integration.Locale, payload)
+		h.interact(w, r, integration, payload)
 	}
 }
 
@@ -157,9 +186,26 @@ func (h *handler) member(ctx context.Context, userID string) (domain.Member, err
 	if userID == "" {
 		return domain.Member{}, domain.ErrNotFound
 	}
-	// Neither command user_name nor user-supplied email establishes identity.
-	// The outbound worker owns the Slack-user cache; no users.info scope exists.
-	return h.store.MemberBySlackUser(ctx, userID)
+	// Only Slack's authenticated users.info email may establish a cache miss.
+	member, err := h.store.MemberBySlackUser(ctx, userID)
+	if !memberMissing(err) {
+		return member, err
+	}
+	user, err := h.slack.UserInfo(ctx, userID)
+	if errors.Is(err, slack.ErrUserNotFound) || (err == nil && (user.IsBot || user.Deleted || user.Email == "")) {
+		return domain.Member{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Member{}, err
+	}
+	member, err = h.store.MemberByEmail(ctx, user.Email)
+	if err != nil {
+		return domain.Member{}, err
+	}
+	if err := h.store.LinkMemberSlackUser(ctx, member.ID, userID, h.now()); err != nil {
+		return domain.Member{}, err
+	}
+	return member, nil
 }
 
 func writeJSON(w http.ResponseWriter, body any) {
