@@ -54,6 +54,14 @@ spec:
     installPolicy: Automatic
     publicURLEnv: PEERBONUS_DIRECTORY_PUBLIC_URL
     urlEnv: PEERBONUS_DIRECTORY_URL
+  inbound:
+  - name: slack
+    path: /slack
+    limits:
+      methods:
+      - POST
+      maxBodyBytes: 65536
+      timeout: 10s
   display:
     category: collaborate
     description: Send points and thanks to colleagues every week; close each month

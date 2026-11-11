@@ -48,10 +48,14 @@ type SlackIntegration struct {
 	AnnouncePosts     bool
 	DMRecipientOnPost bool
 	GiveFromSlack     bool
-	Locale            SlackLocale
-	LastErrorCode     *string
-	LastErrorAt       *time.Time
-	UpdatedAt         time.Time
+	// GiveInConversation enables bot mentions and reactions (Events API).
+	GiveInConversation  bool
+	MentionPointChoices []int               // amounts offered when a mention omits points
+	ReactionRules       []SlackReactionRule // ordered; empty = mentions only
+	Locale              SlackLocale
+	LastErrorCode       *string
+	LastErrorAt         *time.Time
+	UpdatedAt           time.Time
 }
 
 // Delivers reports whether a write transaction must enqueue deliveries of
