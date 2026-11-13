@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { Lock, Save, Send } from 'lucide-react'
 import { useId, useReducer, useState, type FormEvent } from 'react'
-import { peerbonusApi, type SlackAdmin, type SlackLocale } from '../../../api/peerbonus'
+import { peerbonusApi, type SlackAdmin, type SlackLocale, type SlackSettings } from '../../../api/peerbonus'
 import { LANGUAGES, useText } from '../../../i18n'
 import { Button, cn, controlClasses, Notice } from '../../../ui'
 import { slackQuery, SLACK_KEY } from '../queries'
@@ -16,7 +16,7 @@ import { slackDraftReducer, slackPatchOf, validateSlackDraft } from './slack-for
  * the test message (to the saved channel). Locked until the workspace is connected. A save replaces
  * the settings; the form restarts from what the server stored (`key` by the caller).
  */
-export function SlackSettingsCard({ slack, justSaved, onSaved }: { slack: SlackAdmin; justSaved: boolean; onSaved: (settingsKey: string) => void }) {
+export function SlackSettingsCard({ slack, justSaved, onSaved }: { slack: SlackAdmin; justSaved: boolean; onSaved: (settings: SlackSettings) => void }) {
   const { t } = useText()
   const client = useQueryClient()
   const id = useId()
@@ -32,7 +32,7 @@ export function SlackSettingsCard({ slack, justSaved, onSaved }: { slack: SlackA
   const save = useMutation({
     mutationFn: () => peerbonusApi.admin.slack.update(patch),
     onSuccess: async (result) => {
-      onSaved(JSON.stringify(result.settings))
+      onSaved(result.settings)
       client.setQueryData(slackQuery.queryKey, result)
       await client.invalidateQueries({ queryKey: SLACK_KEY })
     },

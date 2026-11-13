@@ -11,7 +11,9 @@
 // Watanabe to no group (the empty-team view).
 // About fifty posts spread over the current and the two previous months (more
 // than one timeline page), claps from uninvolved members, and the append-only
-// ledger both produce. Seeds are relative to the mock clock at reset time.
+// ledger both produce. Every seventh seeded post was given in Slack (a mention
+// in #kudos), so it links its Slack message. Seeds are relative to the mock
+// clock at reset time.
 // The caller is 山田 (peerbonus admin) unless MOCK_ROLE is set to anything but
 // Admin. `POST /__mock/caller {memberId, admin?}` switches the caller (default
 // not admin); `POST /__mock/directory {up}` takes Directory down to exercise
@@ -48,6 +50,8 @@ export type MockPost = {
   message: string
   values: string[]
   createdAt: string
+  /** The Slack message a give in a conversation came from; null for posts from the web. */
+  slackPermalink: string | null
   deletedAt: string | null
   deletedBy: string | null
   reversed: boolean
@@ -254,6 +258,7 @@ function seed(): MockState {
     if (recipient === sender) recipient = MOCK_MEMBER_IDS[names[(index * 5 + 2) % names.length]!]
     const values = Array.from({ length: index % 4 }, (_, position) => VALUES[(index + position) % VALUES.length]!.key)
     const post = writePost(sender, recipient, POINTS[index % POINTS.length]!, MESSAGES[index % MESSAGES.length]!, values, at)
+    if (index % 7 === 3) post.slackPermalink = `https://acme.slack.com/archives/C0KUDOS/p${Math.floor(at / 1000)}000100`
     // Up to two uninvolved members clap an hour later (never after "now").
     let clappers = 0
     for (const [offset, name] of names.entries()) {
@@ -365,6 +370,7 @@ function writePost(senderId: string, recipientId: string, points: number, messag
     message,
     values,
     createdAt,
+    slackPermalink: null,
     deletedAt: null,
     deletedBy: null,
     reversed: false,
@@ -403,6 +409,7 @@ function postJson(post: MockPost): Post {
     period: post.periodKey,
     month: post.monthKey,
     createdAt: post.createdAt,
+    slackPermalink: post.slackPermalink,
   }
 }
 

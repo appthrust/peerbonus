@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -91,12 +92,21 @@ func TestRateLimitRetryAfter(t *testing.T) {
 			t.Cleanup(server.Close)
 			client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
 			require.NoError(t, err)
-			_, err = client.AuthTest(t.Context())
-			require.True(t, slack.IsRateLimited(fmt.Errorf("wrapped: %w", err)))
-			var apiError *slack.Error
-			require.ErrorAs(t, err, &apiError)
-			require.Equal(t, tc.want, apiError.RetryAfter)
-			require.Equal(t, tc.status, apiError.Status)
+			for _, method := range []string{"auth.test", "users.info"} {
+				t.Run(method, func(t *testing.T) {
+					if method == "auth.test" {
+						_, err = client.AuthTest(t.Context())
+					} else {
+						_, err = client.UserInfo(t.Context(), "U1")
+					}
+					require.True(t, slack.IsRateLimited(fmt.Errorf("wrapped: %w", err)))
+					var apiError *slack.Error
+					require.ErrorAs(t, err, &apiError)
+					require.Equal(t, method, apiError.Method)
+					require.Equal(t, tc.want, apiError.RetryAfter)
+					require.Equal(t, tc.status, apiError.Status)
+				})
+			}
 		})
 	}
 	require.False(t, slack.IsRateLimited(nil))
@@ -120,8 +130,8 @@ func TestPagination(t *testing.T) {
 	require.Len(t, calls, 3)
 	for _, call := range calls {
 		require.Equal(t, "public_channel", call.Body["types"])
-		require.Equal(t, true, call.Body["exclude_archived"])
-		require.Equal(t, float64(200), call.Body["limit"])
+		require.Equal(t, "true", call.Body["exclude_archived"])
+		require.Equal(t, "200", call.Body["limit"])
 	}
 	require.Empty(t, calls[0].Body["cursor"])
 	require.NotEmpty(t, calls[1].Body["cursor"])
@@ -131,12 +141,9 @@ func TestPagination(t *testing.T) {
 func TestPaginationCapsAtThousand(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Cursor string `json:"cursor"`
-		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NoError(t, r.ParseForm())
 		if calls > 0 {
-			require.Equal(t, fmt.Sprint(calls), body.Cursor)
+			require.Equal(t, fmt.Sprint(calls), r.PostForm.Get("cursor"))
 		}
 		calls++
 		channels := make([]slack.Channel, 200)
@@ -212,4 +219,146 @@ func TestTransportRejectsRedirects(t *testing.T) {
 	require.ErrorAs(t, err, &apiError)
 	require.Equal(t, http.StatusTemporaryRedirect, apiError.Status)
 	require.False(t, redirected)
+}
+
+func TestLookupUserByEmailFormEncoding(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/users.lookupByEmail", r.URL.Path)
+		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		require.Empty(t, r.URL.RawQuery)
+		require.NoError(t, r.ParseForm())
+		require.Equal(t, "alice+bonus@example.com", r.PostForm.Get("email"))
+		require.Empty(t, r.PostForm.Get("token"))
+		_, _ = io.WriteString(w, `{"ok":true,"user":{"id":"U1"}}`)
+	}))
+	t.Cleanup(server.Close)
+	client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
+	require.NoError(t, err)
+	id, err := client.LookupUserByEmail(t.Context(), "alice+bonus@example.com")
+	require.NoError(t, err)
+	require.Equal(t, "U1", id)
+}
+
+func TestConversationReadMethodsFormEncoding(t *testing.T) {
+	for _, tc := range []struct {
+		method   string
+		form     url.Values
+		response string
+		call     func(*testing.T, *slack.Client)
+	}{
+		{"users.info", url.Values{"user": {"U1"}},
+			`{"ok":true,"user":{"id":"U1","profile":{"email":"alice@example.com"},"is_bot":false,"deleted":false}}`,
+			func(t *testing.T, client *slack.Client) {
+				user, err := client.UserInfo(t.Context(), "U1")
+				require.NoError(t, err)
+				require.Equal(t, slack.User{ID: "U1", Email: "alice@example.com"}, user)
+			}},
+		{"chat.getPermalink", url.Values{"channel": {"C1"}, "message_ts": {"1700000000.000123"}},
+			`{"ok":true,"permalink":"https://acme.slack.com/archives/C1/p1700000000000123"}`,
+			func(t *testing.T, client *slack.Client) {
+				link, err := client.Permalink(t.Context(), "C1", "1700000000.000123")
+				require.NoError(t, err)
+				require.Equal(t, "https://acme.slack.com/archives/C1/p1700000000000123", link)
+			}},
+		{"conversations.list", url.Values{"types": {"public_channel"}, "exclude_archived": {"true"}, "limit": {"200"}},
+			`{"ok":true,"channels":[{"id":"C1","name":"thanks","is_member":true}],"response_metadata":{"next_cursor":""}}`,
+			func(t *testing.T, client *slack.Client) {
+				channels, err := client.ListPublicChannels(t.Context())
+				require.NoError(t, err)
+				require.Equal(t, []slack.Channel{{ID: "C1", Name: "thanks", IsMember: true}}, channels)
+			}},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, "/"+tc.method, r.URL.Path)
+				require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+				require.Empty(t, r.URL.RawQuery)
+				require.NoError(t, r.ParseForm())
+				require.Equal(t, tc.form, r.PostForm)
+				_, _ = io.WriteString(w, tc.response)
+			}))
+			t.Cleanup(server.Close)
+			client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
+			require.NoError(t, err)
+			tc.call(t, client)
+			require.Equal(t, 1, calls)
+		})
+	}
+}
+
+func TestUserInfoFlagsAndErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, response string
+		want           slack.User
+	}{
+		{"bot", `{"ok":true,"user":{"id":"UBOT","is_bot":true,"profile":{}}}`, slack.User{ID: "UBOT", IsBot: true}},
+		{"deleted", `{"ok":true,"user":{"id":"U1","deleted":true,"profile":{"email":"alice@example.com"}}}`, slack.User{ID: "U1", Email: "alice@example.com", Deleted: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, tc.response)
+			}))
+			t.Cleanup(server.Close)
+			client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
+			require.NoError(t, err)
+			user, err := client.UserInfo(t.Context(), tc.want.ID)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, user)
+		})
+	}
+	server := slacktest.New(t)
+	client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
+	require.NoError(t, err)
+	_, err = client.UserInfo(t.Context(), "U_MISSING")
+	require.ErrorIs(t, err, slack.ErrUserNotFound)
+	require.EqualError(t, err, "slack: users.info: user_not_found (HTTP 200)")
+	var apiError *slack.Error
+	require.ErrorAs(t, err, &apiError)
+	require.Equal(t, "user_not_found", apiError.Code)
+	server.Fail("users.info", "invalid_auth")
+	_, err = client.UserInfo(t.Context(), "U1")
+	require.EqualError(t, err, "slack: users.info: invalid_auth (HTTP 200)")
+	require.False(t, errors.Is(err, slack.ErrUserNotFound))
+}
+
+func TestThreadMessagesJSONEncoding(t *testing.T) {
+	for _, method := range []string{"chat.postMessage", "chat.postEphemeral"} {
+		for _, threadTS := range []string{"", "1700000000.000123"} {
+			t.Run(method+"/"+threadTS, func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, "/"+method, r.URL.Path)
+					require.Equal(t, "application/json; charset=utf-8", r.Header.Get("Content-Type"))
+					var body map[string]any
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+					require.Equal(t, "C1", body["channel"])
+					require.Equal(t, "thanks", body["text"])
+					if method == "chat.postEphemeral" {
+						require.Equal(t, "U1", body["user"])
+					}
+					if threadTS == "" {
+						require.NotContains(t, body, "thread_ts")
+					} else {
+						require.Equal(t, threadTS, body["thread_ts"])
+					}
+					_, _ = io.WriteString(w, `{"ok":true,"ts":"1700000000.000124","message_ts":"1700000000.000124"}`)
+				}))
+				t.Cleanup(server.Close)
+				client, err := slack.New("test-token", slack.WithBaseURL(server.URL))
+				require.NoError(t, err)
+				message := slack.Message{Text: "thanks", ThreadTS: threadTS}
+				if method == "chat.postMessage" {
+					_, err = client.PostMessage(t.Context(), "C1", message)
+				} else {
+					err = client.PostEphemeral(t.Context(), "C1", "U1", message)
+				}
+				require.NoError(t, err)
+			})
+		}
+	}
 }

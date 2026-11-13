@@ -37,7 +37,7 @@ func TestFormAndRouteBoundary(t *testing.T) {
 		status                                int
 	}{
 		{"method", "/slack/commands", "GET", "application/x-www-form-urlencoded", "", 405},
-		{"unknown path", "/slack/events", "POST", "application/x-www-form-urlencoded", "", 404},
+		{"unknown path", "/slack/unknown", "POST", "application/x-www-form-urlencoded", "", 404},
 		{"json", "/slack/commands", "POST", "application/json", `{}`, 415},
 		{"bad form", "/slack/commands", "POST", "application/x-www-form-urlencoded", "%XX", 400},
 		{"bad payload", "/slack/interactions", "POST", "application/x-www-form-urlencoded", "payload=%7B", 400},

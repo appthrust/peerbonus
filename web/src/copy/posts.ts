@@ -98,6 +98,7 @@ export const postMessages = defineDashboardMessages({
   'peerbonus.post.points': { defaultMessage: '+{points} pt', translations: { ja: '+{points} pt' } },
   'peerbonus.post.values': { defaultMessage: 'Values of this post', translations: { ja: 'この投稿のバリュー' } },
   'peerbonus.post.open': { defaultMessage: 'Open post', translations: { ja: '投稿を開く' } },
+  'peerbonus.post.slackOriginal': { defaultMessage: 'Original Slack message', translations: { ja: 'Slack の元メッセージ' } },
   'peerbonus.post.actions': { defaultMessage: 'Post actions', translations: { ja: '投稿の操作' } },
   'peerbonus.post.clappedBy': { defaultMessage: 'Clapped by {names}', translations: { ja: '拍手した人: {names}' } },
   'peerbonus.post.clappedByMore': { defaultMessage: 'Clapped by {names} and {count} more claps', translations: { ja: '拍手した人: {names} ほか {count} 件' } },

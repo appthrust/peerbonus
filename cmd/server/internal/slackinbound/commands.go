@@ -69,19 +69,20 @@ func (h *handler) command(w http.ResponseWriter, r *http.Request, locale domain.
 }
 
 type ephemeralResponse struct {
-	ResponseType string `json:"response_type"`
-	Text         string `json:"text"`
+	ResponseType    string `json:"response_type"`
+	Text            string `json:"text"`
+	ReplaceOriginal bool   `json:"replace_original,omitempty"`
 }
 
 func (h *handler) commandReply(w http.ResponseWriter, r *http.Request, responseURL, text string) {
-	if err := h.respond(r.Context(), responseURL, text); err != nil {
+	if err := h.respond(r.Context(), responseURL, ephemeralResponse{ResponseType: "ephemeral", Text: text}); err != nil {
 		http.Error(w, "Slack response unavailable", http.StatusBadGateway)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *handler) respond(ctx context.Context, rawURL, text string) error {
+func (h *handler) respond(ctx context.Context, rawURL string, message ephemeralResponse) error {
 	endpoint, err := url.Parse(rawURL)
 	// response_url is a capability supplied inside Slack's signed body, not
 	// an administrator-configurable webhook. Keep its egress on Slack hosts.
@@ -89,7 +90,7 @@ func (h *handler) respond(ctx context.Context, rawURL, text string) error {
 		(endpoint.Hostname() != "hooks.slack.com" && endpoint.Hostname() != "hooks.slack-gov.com") {
 		return fmt.Errorf("invalid Slack response URL")
 	}
-	body, err := json.Marshal(ephemeralResponse{ResponseType: "ephemeral", Text: text})
+	body, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}

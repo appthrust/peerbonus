@@ -1,8 +1,9 @@
 // The Slack app manifest an admin pastes into https://api.slack.com/apps
 // (Create New App › From a manifest), design slack-integration §8, as JSON.
 // Phase A (output only) has the bot and its scopes; Phase B adds the
-// `/peerbonus` command, interactivity and the options load URL, all pointing
-// at the Slack inbound endpoint the platform projected for this Project.
+// `/peerbonus` command, interactivity and the options load URL, and the
+// mention and reaction events (giving in a conversation), all pointing at the
+// Slack inbound endpoint the platform projected for this Project.
 
 /** The bot's display name; the `/invite @Peer Bonus` hint names it too. */
 export const SLACK_APP_NAME = 'Peer Bonus'
@@ -18,15 +19,17 @@ export type SlackManifest = {
   oauth_config: { scopes: { bot: string[] } }
   settings: {
     interactivity?: { is_enabled: boolean; request_url: string; message_menu_options_url: string }
+    event_subscriptions?: { request_url: string; bot_events: string[] }
     org_deploy_enabled: boolean
     socket_mode_enabled: boolean
   }
 }
 
 /**
- * The manifest for `phaseB` (Slack → Peer Bonus: command, modal, clap button) or Phase A (announcements
- * and DMs only). `inboundUrl` is the endpoint's base (`https://in.<base>/<project>/<endpoint>`);
- * Phase B needs it, Phase A ignores it.
+ * The manifest for `phaseB` (Slack → Peer Bonus: command, modal, clap button, mentions and reaction
+ * emoji) or Phase A (announcements and DMs only). `inboundUrl` is the endpoint's base
+ * (`https://in.<base>/<project>/<endpoint>`); Phase B needs it, Phase A ignores it. A Phase B
+ * manifest adds scopes, so a workspace that installed an earlier one has to reinstall the app.
  */
 export function generateManifest({ inboundUrl, phaseB }: { inboundUrl: string | null; phaseB: boolean }): SlackManifest {
   const manifest: SlackManifest = {
@@ -39,9 +42,10 @@ export function generateManifest({ inboundUrl, phaseB }: { inboundUrl: string | 
   if (!inboundUrl) throw new Error('a Phase B manifest needs the inbound URL')
   const base = inboundUrl.replace(/\/+$/, '')
   manifest.features.slash_commands = [{ command: '/peerbonus', url: `${base}/commands`, description: 'Send points and thanks', usage_hint: '[balance]' }]
-  manifest.oauth_config.scopes.bot.push('commands')
+  manifest.oauth_config.scopes.bot.push('commands', 'app_mentions:read', 'reactions:read')
   manifest.settings = {
     interactivity: { is_enabled: true, request_url: `${base}/interactions`, message_menu_options_url: `${base}/options` },
+    event_subscriptions: { request_url: `${base}/events`, bot_events: ['app_mention', 'reaction_added'] },
     ...manifest.settings,
   }
   return manifest

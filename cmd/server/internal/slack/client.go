@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,7 +97,7 @@ func (e *Error) Error() string {
 var ErrUserNotFound = errors.New("slack: user not found")
 
 func (e *Error) Unwrap() error {
-	if e.Code == "users_not_found" {
+	if e.Code == "users_not_found" || e.Code == "user_not_found" {
 		return ErrUserNotFound
 	}
 	return nil
@@ -115,8 +116,14 @@ type AuthInfo struct {
 }
 
 type Message struct {
-	Text   string          `json:"text"`
-	Blocks json.RawMessage `json:"blocks,omitempty"`
+	Text     string          `json:"text"`
+	Blocks   json.RawMessage `json:"blocks,omitempty"`
+	ThreadTS string          `json:"thread_ts,omitempty"`
+}
+
+type User struct {
+	ID, Email      string
+	IsBot, Deleted bool
 }
 
 type Channel struct {
@@ -137,16 +144,24 @@ type response interface{ status() envelope }
 func (c *Client) call(ctx context.Context, method string, body any, out response) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	data, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("slack: %s: encode request: %w", method, err)
+	var reader io.Reader
+	contentType := "application/json; charset=utf-8"
+	if form, ok := body.(url.Values); ok {
+		reader = strings.NewReader(form.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	} else {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("slack: %s: encode request: %w", method, err)
+		}
+		reader = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/"+method, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/"+method, reader)
 	if err != nil {
 		return fmt.Errorf("slack: %s: create request: %w", method, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("slack: %s: request: %w", method, err)
@@ -243,21 +258,38 @@ func (c *Client) LookupUserByEmail(ctx context.Context, email string) (string, e
 			ID string `json:"id"`
 		} `json:"user"`
 	}
-	body := struct {
-		Email string `json:"email"`
-	}{email}
-	err := c.call(ctx, "users.lookupByEmail", body, &out)
+	err := c.call(ctx, "users.lookupByEmail", url.Values{"email": {email}}, &out)
 	return out.User.ID, err
+}
+
+func (c *Client) UserInfo(ctx context.Context, userID string) (User, error) {
+	var out struct {
+		envelope
+		User struct {
+			ID      string `json:"id"`
+			IsBot   bool   `json:"is_bot"`
+			Deleted bool   `json:"deleted"`
+			Profile struct {
+				Email string `json:"email"`
+			} `json:"profile"`
+		} `json:"user"`
+	}
+	err := c.call(ctx, "users.info", url.Values{"user": {userID}}, &out)
+	return User{ID: out.User.ID, Email: out.User.Profile.Email, IsBot: out.User.IsBot, Deleted: out.User.Deleted}, err
+}
+
+func (c *Client) Permalink(ctx context.Context, channel, ts string) (string, error) {
+	var out struct {
+		envelope
+		Permalink string `json:"permalink"`
+	}
+	err := c.call(ctx, "chat.getPermalink", url.Values{"channel": {channel}, "message_ts": {ts}}, &out)
+	return out.Permalink, err
 }
 
 // ListPublicChannels follows Slack cursors, returning at most 1,000 channels.
 func (c *Client) ListPublicChannels(ctx context.Context) ([]Channel, error) {
-	body := struct {
-		Types           string `json:"types"`
-		ExcludeArchived bool   `json:"exclude_archived"`
-		Limit           int    `json:"limit"`
-		Cursor          string `json:"cursor,omitempty"`
-	}{Types: "public_channel", ExcludeArchived: true, Limit: 200}
+	body := url.Values{"types": {"public_channel"}, "exclude_archived": {"true"}, "limit": {"200"}}
 	channels := make([]Channel, 0)
 	for {
 		var out struct {
@@ -274,7 +306,7 @@ func (c *Client) ListPublicChannels(ctx context.Context) ([]Channel, error) {
 		if len(channels) == 1000 || out.Metadata.NextCursor == "" {
 			return channels, nil
 		}
-		body.Cursor = out.Metadata.NextCursor
+		body.Set("cursor", out.Metadata.NextCursor)
 	}
 }
 

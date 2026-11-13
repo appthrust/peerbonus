@@ -38,6 +38,7 @@ type API struct {
 	slack                        slackAdminClient
 	slackStore                   slackAdminStore
 	slackSigningSecretConfigured bool
+	slackInbound                 *slackInboundClient
 	slackChannelsMu              sync.Mutex
 	slackChannels                []slack.Channel
 	slackChannelsExpires         time.Time
@@ -57,6 +58,9 @@ func New(database *store.Store, auth *identity.Authenticator, upstream *platform
 	a := &API{store: database, identity: auth, platform: upstream, directory: directory.New(links), directoryPublicURL: directoryPublicURL, mux: http.NewServeMux(), now: time.Now, slackStore: database, slackSigningSecretConfigured: slackOptions.SigningSecretConfigured}
 	if slackOptions.Client != nil {
 		a.slack = slackOptions.Client
+	}
+	if slackOptions.PlatformAPIURL != "" {
+		a.slackInbound = newSlackInboundClient(slackOptions.PlatformAPIURL, upstream.ProjectID, auth.HTTPClient().Transport)
 	}
 	a.mux.HandleFunc("GET /api/peerbonus/v1/openapi.json", a.openapi)
 	a.route("GET /api/peerbonus/v1/me", false, true, a.me)

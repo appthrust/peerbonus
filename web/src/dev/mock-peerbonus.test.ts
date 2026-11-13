@@ -89,7 +89,7 @@ describe('peerbonus mock contract', () => {
     const sent = await send('sato', 30, { values: ['challenge', 'thanks'] }, 'once')
     expect(sent.status).toBe(201)
     const post = sent.body as Post
-    expect(post).toMatchObject({ points: 30, values: ['challenge', 'thanks'], clapCount: 0, clappedByMe: 0, period: '2026-W43', month: '2026-10' })
+    expect(post).toMatchObject({ points: 30, values: ['challenge', 'thanks'], clapCount: 0, clappedByMe: 0, period: '2026-W43', month: '2026-10', slackPermalink: null })
     expect(post.sender.id).toBe(MOCK_MEMBER_IDS.yamada)
     expect(post.recipient.personId).toBe('p-sato')
     expect((await me()).stats.period.remaining).toBe(before.stats.period.remaining - 30)
@@ -99,6 +99,14 @@ describe('peerbonus mock contract', () => {
     const replay = await send('sato', 30, { values: ['challenge', 'thanks'] }, 'once')
     expect(replay).toEqual({ status: 201, body: post })
     expect((await me()).stats.period.remaining).toBe(before.stats.period.remaining - 30)
+  })
+
+  test('every seventh seeded post was given in Slack and carries its permalink', async () => {
+    const items = ((await call('GET', '/posts?limit=50')).body as PostPage).items
+    const linked = items.filter((post) => post.slackPermalink !== null)
+    expect(linked.length).toBeGreaterThan(0)
+    expect(linked.length).toBeLessThan(items.length)
+    for (const post of linked) expect(post.slackPermalink).toMatch(/^https:\/\/acme\.slack\.com\/archives\/C0KUDOS\/p\d+$/)
   })
 
   test('sending to a Directory-only person creates a pending member', async () => {

@@ -6,6 +6,7 @@ package slacktest
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -21,7 +22,7 @@ type Server struct {
 	URL      string
 	mu       sync.Mutex
 	team     slack.AuthInfo
-	users    map[string]string
+	users    map[string]slack.User
 	channels []slack.Channel
 	failures map[string][]string
 	calls    []Call
@@ -41,12 +42,13 @@ type Call struct {
 }
 
 type Posted struct {
-	Channel string          `json:"channel"`
-	TS      string          `json:"ts"`
-	Text    string          `json:"text"`
-	Blocks  json.RawMessage `json:"blocks,omitempty"`
-	Deleted bool            `json:"deleted"`
-	Updates int             `json:"updates"`
+	Channel  string          `json:"channel"`
+	TS       string          `json:"ts"`
+	ThreadTS string          `json:"thread_ts,omitempty"`
+	Text     string          `json:"text"`
+	Blocks   json.RawMessage `json:"blocks,omitempty"`
+	Deleted  bool            `json:"deleted"`
+	Updates  int             `json:"updates"`
 }
 
 func New(t testing.TB, opts ...ServerOption) *Server {
@@ -60,10 +62,12 @@ func New(t testing.TB, opts ...ServerOption) *Server {
 
 // NewHandler creates a fake without opening a listener. It also serves GET
 // /_calls with calls, messages, and views; authorization values are redacted.
+// Slack methods accept JSON or form bodies. Permalinks also cover incoming
+// messages not posted through this fake, provided their channel is configured.
 func NewHandler(opts ...ServerOption) *Server {
 	s := &Server{
 		team:  slack.AuthInfo{TeamID: "T123", TeamName: "Acme", BotUserID: "UBOT"},
-		users: make(map[string]string), failures: make(map[string][]string),
+		users: make(map[string]slack.User), failures: make(map[string][]string),
 		channels: []slack.Channel{}, calls: []Call{}, messages: []Posted{}, views: []json.RawMessage{},
 	}
 	for _, opt := range opts {
@@ -79,9 +83,18 @@ func (s *Server) Team() slack.AuthInfo {
 }
 
 func (s *Server) AddUser(email, userID string) {
+	s.addUser(slack.User{ID: userID, Email: email})
+}
+
+// AddBot registers a user returned by users.info with is_bot set.
+func (s *Server) AddBot(email, userID string) {
+	s.addUser(slack.User{ID: userID, Email: email, IsBot: true})
+}
+
+func (s *Server) addUser(user slack.User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.users[strings.ToLower(email)] = userID
+	s.users[strings.ToLower(user.Email)] = user
 }
 
 func (s *Server) AddChannel(id, name string, botMember bool) {
@@ -177,7 +190,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body == nil {
+	contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if contentType == "application/x-www-form-urlencoded" {
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeError(w, "invalid_form")
+			return
+		}
+		body = make(map[string]any, len(r.PostForm))
+		for key := range r.PostForm {
+			body[key] = r.PostForm.Get(key)
+		}
+	} else if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body == nil {
 		w.WriteHeader(http.StatusBadRequest)
 		writeError(w, "invalid_json")
 		return
@@ -204,12 +228,34 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slack.AuthInfo
 		}{true, s.team})
 	case "users.lookupByEmail":
-		id, ok := s.users[strings.ToLower(field("email"))]
+		user, ok := s.users[strings.ToLower(field("email"))]
 		if !ok {
 			writeError(w, "users_not_found")
 			return
 		}
-		writeJSON(w, map[string]any{"ok": true, "user": map[string]string{"id": id}})
+		writeJSON(w, map[string]any{"ok": true, "user": map[string]string{"id": user.ID}})
+	case "users.info":
+		for _, user := range s.users {
+			if user.ID == field("user") {
+				writeJSON(w, map[string]any{"ok": true, "user": map[string]any{
+					"id": user.ID, "is_bot": user.IsBot, "deleted": user.Deleted,
+					"profile": map[string]string{"email": user.Email},
+				}})
+				return
+			}
+		}
+		writeError(w, "user_not_found")
+	case "chat.getPermalink":
+		channel, ts := field("channel"), field("message_ts")
+		if code := s.channelError(channel); code != "" {
+			writeError(w, code)
+			return
+		}
+		if ts == "" {
+			writeError(w, "message_not_found")
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "channel": channel, "permalink": "https://example.slack.com/archives/" + channel + "/p" + strings.ReplaceAll(ts, ".", "")})
 	case "conversations.list":
 		start := 0
 		if cursor := field("cursor"); cursor != "" {
@@ -238,7 +284,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{"ok": true, "message_ts": ts})
 			return
 		}
-		s.messages = append(s.messages, Posted{Channel: channel, TS: ts, Text: field("text"), Blocks: rawField(body, "blocks")})
+		s.messages = append(s.messages, Posted{Channel: channel, TS: ts, ThreadTS: field("thread_ts"), Text: field("text"), Blocks: rawField(body, "blocks")})
 		writeJSON(w, map[string]any{"ok": true, "channel": channel, "ts": ts})
 	case "chat.update", "chat.delete":
 		channel := field("channel")
@@ -280,8 +326,8 @@ func (s *Server) channelError(id string) string {
 			return ""
 		}
 	}
-	for _, userID := range s.users {
-		if userID == id {
+	for _, user := range s.users {
+		if user.ID == id {
 			return ""
 		}
 	}
@@ -292,6 +338,9 @@ func rawField(body map[string]any, key string) json.RawMessage {
 	value, ok := body[key]
 	if !ok {
 		return nil
+	}
+	if data, ok := value.(string); ok {
+		return json.RawMessage(data)
 	}
 	data, _ := json.Marshal(value) // Values were produced by encoding/json.
 	return data

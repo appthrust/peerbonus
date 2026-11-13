@@ -2,7 +2,7 @@ import { createDashboardTranslator } from '@appthrust/platform-dashboard-i18n'
 import { describe, expect, test } from 'bun:test'
 import type { SlackAdmin, SlackDeliveryKind, SlackState } from '../../../api/peerbonus'
 import { catalogs } from '../../../copy'
-import { DELIVERY_KIND_LABELS, DELIVERY_STATE_VIEWS, DELIVERY_STATES, SLACK_ERROR_LABELS, setupSteps, STATE_VIEWS } from './slack-state'
+import { conversationBlocker, DELIVERY_KIND_LABELS, DELIVERY_STATE_VIEWS, DELIVERY_STATES, SLACK_ERROR_LABELS, setupSteps, STATE_VIEWS } from './slack-state'
 
 const ja = createDashboardTranslator('ja', catalogs)
 const en = createDashboardTranslator('en', catalogs)
@@ -10,7 +10,16 @@ const en = createDashboardTranslator('en', catalogs)
 const base: Pick<SlackAdmin, 'credential' | 'state' | 'settings' | 'inbound'> = {
   credential: { botToken: false, signingSecret: false },
   state: 'unconfigured',
-  settings: { announceChannel: null, announcePosts: false, dmRecipientOnPost: true, giveFromSlack: false, locale: 'ja' },
+  settings: {
+    announceChannel: null,
+    announcePosts: false,
+    dmRecipientOnPost: true,
+    giveFromSlack: false,
+    locale: 'ja',
+    giveInConversation: false,
+    mentionPointChoices: [10, 30, 50],
+    reactionRules: [],
+  },
   inbound: null,
 }
 
@@ -63,5 +72,29 @@ describe('setup guide progress', () => {
     const phaseB = { ...base, credential: { botToken: true, signingSecret: true }, inbound: { url: 'https://in.example/x', ready: true, reason: null } }
     expect(done(phaseB).at(-1)).toBe('signingSecret:todo')
     expect(done({ ...phaseB, settings: { ...base.settings, giveFromSlack: true } }).at(-1)).toBe('signingSecret:done')
+  })
+})
+
+describe('giving in a conversation: what keeps the switch off', () => {
+  const inbound = { url: 'https://in.example/x', ready: true, reason: null }
+
+  test('the signing secret first, then the inbound URL; nothing once both are there', () => {
+    const blocker = (slack: Parameters<typeof conversationBlocker>[0]) => {
+      const id = conversationBlocker(slack)
+      return id && ja.t(id)
+    }
+    expect(blocker({ credential: { botToken: true, signingSecret: false }, inbound })).toBe('Dashboard の Credentials に Slack signing secret が必要です。')
+    expect(blocker({ credential: { botToken: true, signingSecret: true }, inbound: null })).toBe('Slack からのリクエスト URL がまだないため、使えません。')
+    // A projected endpoint without a URL yet (or the platform unreachable) is no URL either.
+    expect(blocker({ credential: { botToken: true, signingSecret: true }, inbound: { url: null, ready: false, reason: 'platform_unavailable' } })).toBe(
+      'Slack からのリクエスト URL がまだないため、使えません。'
+    )
+    expect(blocker({ credential: { botToken: true, signingSecret: true }, inbound })).toBeNull()
+  })
+
+  test('the usage help shows the mention format in both languages', () => {
+    expect(ja.t('peerbonus.slack.conversation.helpExample')).toBe('@Peer Bonus @相手 30 メッセージ')
+    expect(en.t('peerbonus.slack.conversation.helpExample')).toBe('@Peer Bonus @person 30 message')
+    expect(ja.t('peerbonus.slack.conversation.helpInvite')).toContain('/invite @Peer Bonus')
   })
 })

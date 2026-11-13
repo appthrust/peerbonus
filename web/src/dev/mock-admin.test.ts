@@ -301,7 +301,16 @@ describe('admin mock: Slack', () => {
       credential: { botToken: true, signingSecret: false },
       state: 'configured',
       workspace: null,
-      settings: { announceChannel: null, announcePosts: false, dmRecipientOnPost: true, giveFromSlack: false, locale: 'ja' },
+      settings: {
+        announceChannel: null,
+        announcePosts: false,
+        dmRecipientOnPost: true,
+        giveFromSlack: false,
+        locale: 'ja',
+        giveInConversation: false,
+        mentionPointChoices: [10, 30, 50],
+        reactionRules: [],
+      },
       inbound: null,
       lastError: null,
       deliveries: { pending: 0, failed24h: 0, sent24h: 0 },
@@ -322,7 +331,7 @@ describe('admin mock: Slack', () => {
     await connect()
     const { status, body } = await call('PATCH', '/admin/slack', { announceChannelId: 'C0GENERAL', announcePosts: true, locale: 'en' })
     expect(status).toBe(200)
-    expect(body.settings).toEqual({ announceChannel: { id: 'C0GENERAL', name: 'general' }, announcePosts: true, dmRecipientOnPost: true, giveFromSlack: false, locale: 'en' })
+    expect(body.settings).toMatchObject({ announceChannel: { id: 'C0GENERAL', name: 'general' }, announcePosts: true, dmRecipientOnPost: true, giveFromSlack: false, locale: 'en' })
     expect((await slack()).settings).toEqual(body.settings)
     expect((await call('PATCH', '/admin/slack', { announceChannelId: 'C0NOPE' })).status).toBe(400)
     expect((await call('PATCH', '/admin/slack', { announceChannelId: null })).status).toBe(400)
@@ -331,6 +340,49 @@ describe('admin mock: Slack', () => {
     expect((await call('PATCH', '/admin/slack', { giveFromSlack: true })).body.error).toBe('slack_signing_secret_missing')
     await call('POST', '/__mock/slack', { signingSecret: true })
     expect((await call('PATCH', '/admin/slack', { giveFromSlack: true })).body.settings.giveFromSlack).toBe(true)
+  })
+
+  test('giving in a conversation: choices and rules persist (emoji normalized), checked against the Program; the switch needs the secret', async () => {
+    const patch = (body: unknown) => call('PATCH', '/admin/slack', body)
+    expect((await patch({ mentionPointChoices: [5] })).body.error).toBe('slack_not_connected')
+    await connect()
+    const rules = [
+      { emoji: ':PB-10:', points: 10, valueKey: null },
+      { emoji: 'pb-30::skin-tone-2', points: 30, valueKey: 'thanks' },
+    ]
+    const saved = await patch({ mentionPointChoices: [5, 20], reactionRules: rules })
+    expect(saved.status).toBe(200)
+    expect(saved.body.settings).toMatchObject({
+      mentionPointChoices: [5, 20],
+      reactionRules: [
+        { emoji: 'pb-10', points: 10, valueKey: null },
+        { emoji: 'pb-30', points: 30, valueKey: 'thanks' },
+      ],
+    })
+    expect((await slack()).settings).toEqual(saved.body.settings)
+    // A PATCH without the lists keeps them.
+    expect((await patch({ locale: 'en' })).body.settings.reactionRules).toHaveLength(2)
+
+    for (const [body, error] of [
+      [{ mentionPointChoices: [] }, 'invalid_request'],
+      [{ mentionPointChoices: [10, 20, 30, 40, 50, 60] }, 'invalid_request'],
+      [{ mentionPointChoices: [10, 10] }, 'invalid_request'],
+      [{ mentionPointChoices: [121] }, 'invalid_request'],
+      [{ reactionRules: [{ emoji: 'a b', points: 10, valueKey: null }] }, 'invalid_request'],
+      [{ reactionRules: [{ emoji: 'pb', points: 10, valueKey: null }, { emoji: ':pb:', points: 20, valueKey: null }] }, 'invalid_request'],
+      [{ reactionRules: [{ emoji: 'pb', points: 0, valueKey: null }] }, 'invalid_request'],
+      [{ reactionRules: Array.from({ length: 9 }, (_, index) => ({ emoji: `pb-${index}`, points: 10, valueKey: null })) }, 'invalid_request'],
+      [{ reactionRules: [{ emoji: 'pb', points: 10, valueKey: 'nope' }] }, 'unknown_value'],
+      [{ giveInConversation: true }, 'slack_signing_secret_missing'],
+    ] as const) {
+      const refused = await patch(body)
+      expect([JSON.stringify(body), refused.status, refused.body.error]).toEqual([JSON.stringify(body), error === 'slack_signing_secret_missing' ? 409 : 400, error])
+    }
+    // Nothing of a refused PATCH was applied.
+    expect((await slack()).settings).toMatchObject({ giveInConversation: false, mentionPointChoices: [5, 20] })
+    await call('POST', '/__mock/slack', { signingSecret: true })
+    expect((await patch({ giveInConversation: true })).body.settings.giveInConversation).toBe(true)
+    expect((await patch({ reactionRules: [] })).body.settings.reactionRules).toEqual([])
   })
 
   test('channels: prefix search with the bot membership, at most the limit', async () => {

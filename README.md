@@ -6,8 +6,18 @@ statements. The Go server serves the React SPA, `/api/peerbonus/v1/*`, `/config`
 `/launcher`, `/healthz`, `/readyz`, and `/releasez` from one origin. PostgreSQL
 stores application data; Directory remains a separate app called over HTTP.
 The SPA uses the session cookie behind the OIDC edge and never handles tokens.
-Optional Slack credentials enable announcements, direct messages, and inbound
-commands and interactions.
+Optional Slack credentials enable announcements, direct messages, the
+`/peerbonus` command, and giving inside a conversation: mentioning the bot
+(`@Peer Bonus @recipient 30 message`; the bot asks for the amount when it is
+omitted) or adding an admin-chosen reaction. Slack reaches the server through
+the `slack` inbound endpoint declared in `catalog/entry.yaml` (`/slack/*`).
+
+A sender can give only once from the same Slack message, regardless of the emoji
+or whether the give started with a mention. A mention can still give to up to
+five recipients atomically; retries replay that entire original batch. Stored
+gives are unique by (channel, message timestamp, sender, recipient), with emoji
+retained only for reference. Removing a reaction does not refund points or allow
+another give. This replaces the per-emoji RL2 rule in `reaction-give.md`.
 
 ## Develop
 

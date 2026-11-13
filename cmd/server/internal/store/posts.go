@@ -16,7 +16,8 @@ const postColumns = `p.id,p.period_key,p.month_key,p.points,p.message,p.value_ke
  s.id,s.person_id,s.subject,s.display_name,s.email,s.last_seen_at,s.avatar_version,
  r.id,r.person_id,r.subject,r.display_name,r.email,r.last_seen_at,r.avatar_version,
  (SELECT count(*) FROM claps c WHERE c.post_id=p.id AND c.member_id=$1),
- newest_clappers.members`
+ newest_clappers.members,
+ (SELECT g.permalink FROM slack_gives g WHERE g.post_id=p.id AND g.clap_id IS NULL)`
 
 const postJoins = ` FROM posts p JOIN members s ON s.id=p.sender_id JOIN members r ON r.id=p.recipient_id
  CROSS JOIN LATERAL (
@@ -32,10 +33,10 @@ const postSelect = `SELECT ` + postColumns + postJoins
 
 func scanPost(row scanner, extra ...any) (out domain.Post, err error) {
 	var clappers []byte
-	destinations := make([]any, 0, 24+len(extra))
+	destinations := make([]any, 0, 25+len(extra))
 	destinations = append(destinations, &out.ID, &out.PeriodKey, &out.MonthKey, &out.Points, &out.Message, pq.Array(&out.Values), &out.ClapCount, &out.CreatedAt,
 		&out.Sender.ID, &out.Sender.PersonID, &out.Sender.Subject, &out.Sender.DisplayName, &out.Sender.Email, &out.Sender.LastSeenAt, &out.Sender.AvatarVersion,
-		&out.Recipient.ID, &out.Recipient.PersonID, &out.Recipient.Subject, &out.Recipient.DisplayName, &out.Recipient.Email, &out.Recipient.LastSeenAt, &out.Recipient.AvatarVersion, &out.ClappedByMe, &clappers)
+		&out.Recipient.ID, &out.Recipient.PersonID, &out.Recipient.Subject, &out.Recipient.DisplayName, &out.Recipient.Email, &out.Recipient.LastSeenAt, &out.Recipient.AvatarVersion, &out.ClappedByMe, &clappers, &out.SlackPermalink)
 	err = row.Scan(append(destinations, extra...)...)
 	out.Clappers = []domain.Member{}
 	if err != nil {

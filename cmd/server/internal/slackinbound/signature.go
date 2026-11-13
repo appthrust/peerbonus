@@ -45,6 +45,12 @@ func (s *replaySet) seen(key string, now time.Time, record bool) bool {
 	return false
 }
 
+func (s *replaySet) forget(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.entries, key)
+}
+
 func (h *handler) verify(w http.ResponseWriter, r *http.Request, now time.Time) ([]byte, bool) {
 	timestamp := r.Header.Get("X-Slack-Request-Timestamp")
 	seconds, err := strconv.ParseInt(timestamp, 10, 64)
@@ -60,7 +66,7 @@ func (h *handler) verify(w http.ResponseWriter, r *http.Request, now time.Time) 
 		return nil, false
 	}
 	key := timestamp + ":" + signature
-	if h.replays.seen(key, now, false) || r.ContentLength > maxBodyBytes {
+	if (r.URL.Path != "/slack/events" && h.replays.seen(key, now, false)) || r.ContentLength > maxBodyBytes {
 		return nil, false
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
@@ -74,9 +80,9 @@ func (h *handler) verify(w http.ResponseWriter, r *http.Request, now time.Time) 
 	if !hmac.Equal([]byte(signature), []byte(expected)) {
 		return nil, false
 	}
-	// Check and insert atomically after authentication, so concurrent copies
-	// cannot both enter the ledger path or open two views.
-	if h.replays.seen(key, now, true) {
+	// Events claim their replay key after parsing, so challenge retries still
+	// return the challenge and duplicate callbacks receive an acknowledgement.
+	if r.URL.Path != "/slack/events" && h.replays.seen(key, now, true) {
 		return nil, false
 	}
 	return body, true

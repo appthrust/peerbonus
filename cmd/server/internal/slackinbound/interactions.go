@@ -17,14 +17,15 @@ type slackID struct {
 }
 
 type interaction struct {
-	Type       string  `json:"type"`
-	Team       slackID `json:"team"`
-	Enterprise slackID `json:"enterprise"`
-	User       slackID `json:"user"`
-	Channel    slackID `json:"channel"`
-	TriggerID  string  `json:"trigger_id"`
-	Value      string  `json:"value"`
-	Actions    []struct {
+	Type        string  `json:"type"`
+	Team        slackID `json:"team"`
+	Enterprise  slackID `json:"enterprise"`
+	User        slackID `json:"user"`
+	Channel     slackID `json:"channel"`
+	TriggerID   string  `json:"trigger_id"`
+	Value       string  `json:"value"`
+	ResponseURL string  `json:"response_url"`
+	Actions     []struct {
 		ActionID string `json:"action_id"`
 		Value    string `json:"value"`
 	} `json:"actions"`
@@ -43,9 +44,24 @@ type actionValue struct {
 	SelectedOptions []selectOption `json:"selected_options"`
 }
 
-func (h *handler) interact(w http.ResponseWriter, r *http.Request, locale domain.SlackLocale, payload interaction) {
+func (h *handler) interact(w http.ResponseWriter, r *http.Request, integration domain.SlackIntegration, payload interaction) {
+	locale := integration.Locale
 	if payload.Type != "view_submission" && payload.Type != "block_actions" {
 		http.Error(w, "Unsupported interaction", http.StatusBadRequest)
+		return
+	}
+	if payload.Type == "block_actions" {
+		for _, action := range payload.Actions {
+			if action.ActionID == "peerbonus_give_points" || action.ActionID == "peerbonus_give_cancel" {
+				if integration.GiveInConversation {
+					h.pendingAction(w, r, integration, payload, action.ActionID, action.Value)
+				}
+				return
+			}
+		}
+	}
+	if !integration.GiveFromSlack {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	member, err := h.member(r.Context(), payload.User.ID)
@@ -172,18 +188,8 @@ func (h *handler) clap(w http.ResponseWriter, r *http.Request, locale domain.Sla
 			IdempotencyKey: "slack:action:" + payload.TriggerID,
 		})
 		if err != nil {
-			var insufficient *domain.InsufficientPointsError
-			var text string
-			switch {
-			case errors.Is(err, domain.ErrOwnPost):
-				text = localized(locale, "自分が贈った・受け取った投稿には拍手できません。", "You cannot clap a post you sent or received.")
-			case errors.As(err, &insufficient):
-				text = fmt.Sprintf(localized(locale, "ポイントが足りません（残り %d pt）。", "Not enough points (%d pt remaining)."), insufficient.Remaining)
-			case errors.Is(err, domain.ErrPeriodClosed):
-				text = localized(locale, "この期間は締められているため拍手できません。", "This period is closed; you cannot clap this post.")
-			case errors.Is(err, domain.ErrNotFound):
-				text = localized(locale, "投稿が見つかりません。", "This post is no longer available.")
-			default:
+			text := clapError(err, locale)
+			if text == "" {
 				http.Error(w, "Unable to clap", http.StatusServiceUnavailable)
 				return
 			}
@@ -200,6 +206,22 @@ func (h *handler) clap(w http.ResponseWriter, r *http.Request, locale domain.Sla
 	}
 	// Link buttons and other non-mutating actions need only an acknowledgement.
 	w.WriteHeader(http.StatusOK)
+}
+
+func clapError(err error, locale domain.SlackLocale) string {
+	var insufficient *domain.InsufficientPointsError
+	switch {
+	case errors.Is(err, domain.ErrOwnPost):
+		return localized(locale, "自分が贈った・受け取った投稿には拍手できません。", "You cannot clap a post you sent or received.")
+	case errors.As(err, &insufficient):
+		return fmt.Sprintf(localized(locale, "ポイントが足りません（残り %d pt）。", "Not enough points (%d pt remaining)."), insufficient.Remaining)
+	case errors.Is(err, domain.ErrPeriodClosed):
+		return localized(locale, "この期間は締められているため拍手できません。", "This period is closed; you cannot clap this post.")
+	case errors.Is(err, domain.ErrNotFound):
+		return localized(locale, "投稿が見つかりません。", "This post is no longer available.")
+	default:
+		return ""
+	}
 }
 
 func (h *handler) ephemeral(w http.ResponseWriter, r *http.Request, payload interaction, text string) {

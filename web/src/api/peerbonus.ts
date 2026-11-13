@@ -48,7 +48,10 @@ export type Program = {
 }
 /** Program plus the money settings only an admin reads. `pointUnitValue` is a decimal string. */
 export type ProgramAdmin = Program & { pointUnitValue: string; currency: string }
-/** `clappedByMe`: how many times the caller clapped this post. `clappers`: the newest three who clapped. */
+/**
+ * `clappedByMe`: how many times the caller clapped this post. `clappers`: the newest three who clapped.
+ * `slackPermalink`: the Slack message it was given from (a mention or a reaction), else null.
+ */
 export type Post = {
   id: string
   sender: Member
@@ -60,6 +63,7 @@ export type Post = {
   clapPoints: number
   clappedByMe: number
   clappers: Member[]
+  slackPermalink: string | null
   period: string
   month: string
   createdAt: string
@@ -230,12 +234,21 @@ export type SlackLocale = 'ja' | 'en'
 export type SlackChannelRef = { id: string; name: string }
 /** A public channel; `isMember`: the bot is in it (only then can it post there). */
 export type SlackChannel = SlackChannelRef & { isMember: boolean }
+/** One reaction emoji that gives points (`emoji`: the bare name, no colons); `valueKey` is an optional Program value. */
+export type SlackReactionRule = { emoji: string; points: number; valueKey: string | null }
+/**
+ * `giveInConversation`: mentions of the bot and the `reactionRules` emoji give points.
+ * `mentionPointChoices`: the amounts (1–5) the bot offers when a mention omits points.
+ */
 export type SlackSettings = {
   announceChannel: SlackChannelRef | null
   announcePosts: boolean
   dmRecipientOnPost: boolean
   giveFromSlack: boolean
   locale: SlackLocale
+  giveInConversation: boolean
+  mentionPointChoices: number[]
+  reactionRules: SlackReactionRule[]
 }
 /** The Slack inbound endpoint the platform projected (Phase B); `url` is null until it is ready. */
 export type SlackInbound = { url: string | null; ready: boolean; reason: string | null }
@@ -262,7 +275,7 @@ export type SlackDelivery = {
   createdAt: string
   sentAt: string | null
 }
-/** `announceChannelId: null` stops announcing to any channel. */
+/** `announceChannelId: null` stops announcing to any channel. `reactionRules` replaces every rule (order kept). */
 export type SlackSettingsPatch = Partial<Omit<SlackSettings, 'announceChannel'>> & { announceChannelId?: string | null }
 /** The two workspaces of a refused verify (409 `slack_team_changed`). */
 export type SlackTeamChange = { current: { teamId: string; teamName: string }; token: { teamId: string; teamName: string } }
@@ -394,8 +407,9 @@ export interface PeerbonusApi {
     slack: {
       get(): Promise<SlackAdmin>
       /**
-       * 400 `invalid_request` (unknown channel, `announcePosts` without a channel), 409 `slack_not_connected`,
-       * 409 `slack_signing_secret_missing` (`giveFromSlack: true` without the signing secret).
+       * 400 `invalid_request` (unknown channel, `announcePosts` without a channel, a bad point choice or reaction rule),
+       * 400 `unknown_value` (a rule's value is not in the Program), 409 `slack_not_connected`, 409 `slack_signing_secret_missing`
+       * (`giveFromSlack` or `giveInConversation` true without the signing secret).
        */
       update(patch: SlackSettingsPatch): Promise<SlackAdmin>
       /**

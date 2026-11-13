@@ -704,3 +704,55 @@ func TestV2InputAndResponseContractWithoutDatabase(t *testing.T) {
 	require.NotNil(t, insights.TopSenders)
 	require.NotNil(t, a.renderParticipation(domain.Participation{}).Items)
 }
+
+func TestSlackConversationPostJSON(t *testing.T) {
+	a := &API{}
+	for _, permalink := range []*string{nil, new("https://acme.slack.com/archives/C123/p123456")} {
+		body, err := json.Marshal(a.renderPost(domain.Post{ID: "post", SlackPermalink: permalink}))
+		require.NoError(t, err)
+		var result map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(body, &result))
+		require.Contains(t, result, "slackPermalink")
+		expected, err := json.Marshal(permalink)
+		require.NoError(t, err)
+		require.JSONEq(t, string(expected), string(result["slackPermalink"]))
+	}
+}
+
+func TestSlackConversationOpenAPI(t *testing.T) {
+	type schema struct {
+		Type       string             `json:"type"`
+		Ref        string             `json:"$ref"`
+		Nullable   bool               `json:"nullable"`
+		Required   []string           `json:"required"`
+		Properties map[string]*schema `json:"properties"`
+		Items      *schema            `json:"items"`
+		MinItems   int                `json:"minItems"`
+		MaxItems   int                `json:"maxItems"`
+	}
+	var document struct {
+		Components struct {
+			Schemas map[string]*schema `json:"schemas"`
+		} `json:"components"`
+	}
+	require.NoError(t, json.Unmarshal(openapiDocument, &document))
+	schemas := document.Components.Schemas
+	settings := schemas["SlackIntegration"].Properties["settings"]
+	patch := schemas["SlackSettingsPatch"]
+	for _, field := range []string{"giveInConversation", "mentionPointChoices", "reactionRules"} {
+		require.Contains(t, settings.Required, field)
+		require.Contains(t, settings.Properties, field)
+		require.Contains(t, patch.Properties, field)
+	}
+	require.Equal(t, "boolean", patch.Properties["giveInConversation"].Type)
+	require.Equal(t, "#/components/schemas/SlackMentionPointChoices", patch.Properties["mentionPointChoices"].Ref)
+	require.Equal(t, 1, schemas["SlackMentionPointChoices"].MinItems)
+	require.Equal(t, 5, schemas["SlackMentionPointChoices"].MaxItems)
+	require.Equal(t, 8, patch.Properties["reactionRules"].MaxItems)
+	require.Equal(t, "#/components/schemas/SlackReactionRule", patch.Properties["reactionRules"].Items.Ref)
+	require.ElementsMatch(t, []string{"emoji", "points"}, schemas["SlackReactionRule"].Required)
+	require.True(t, schemas["SlackReactionRule"].Properties["valueKey"].Nullable)
+	require.Contains(t, schemas["Post"].Required, "slackPermalink")
+	require.Equal(t, "string", schemas["Post"].Properties["slackPermalink"].Type)
+	require.True(t, schemas["Post"].Properties["slackPermalink"].Nullable)
+}

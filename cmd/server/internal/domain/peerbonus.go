@@ -48,6 +48,7 @@ type Post struct {
 	ClapCount, ClapPoints, ClappedByMe int
 	Clappers                           []Member
 	CreatedAt                          time.Time
+	SlackPermalink                     *string // the Slack message this post was given from, if any
 }
 type Clap struct {
 	ID        string

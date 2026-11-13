@@ -1,4 +1,4 @@
-import { Gift } from 'lucide-react'
+import { ExternalLink, Gift } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Post } from '../../api/peerbonus'
 import { useText } from '../../i18n'
@@ -29,7 +29,8 @@ function Sentence({ sentence, children }: { sentence: string; children: ReactNod
  * recipient is the headline — "山田 太郎 さんへ" with a big "+30 pt" — then
  * the message, its values, and a footer: the clap button with who clapped,
  * 「同じ人に贈る」, and "from 鈴木 一郎 · 3 時間前" (the time links to the post
- * page). `detail` is the post page: larger text and the full timestamp.
+ * page), then a link to the Slack message a post given in Slack came from.
+ * `detail` is the post page: larger text and the full timestamp.
  * `highlighted` plays a one-shot glow for a post the viewer just sent (the
  * launcher scrolls it into view). Admins get an overflow menu with 投稿を削除.
  * `now` anchors the relative time; a list passes one clock for all its cards.
@@ -149,6 +150,20 @@ export function PostCard({
               {time}
             </HrefLink>
           )}
+          {post.slackPermalink ? (
+            <>
+              <span aria-hidden>·</span>
+              <a
+                href={post.slackPermalink}
+                target="_blank"
+                rel="noreferrer"
+                className="relative z-[1] inline-flex min-h-10 items-center gap-1 rounded hover:text-stone-900 hover:underline md:min-h-0"
+              >
+                {t('peerbonus.post.slackOriginal')}
+                <ExternalLink aria-hidden className="size-3" />
+              </a>
+            </>
+          ) : null}
         </p>
       </footer>
     </article>

@@ -16,7 +16,9 @@
 //   - Slack (`/admin/slack*`, design slack-integration §5): starts `configured`
 //     (bot token set, workspace not verified, no signing secret, no inbound).
 //     Verify fixes the token's workspace (`Acme`); PATCH validates and
-//     persists; a test message to a channel the bot is in records a sent
+//     persists (giving in a conversation, design reaction-give §5: point
+//     choices and reaction rules checked against the Program, emoji names
+//     normalized); a test message to a channel the bot is in records a sent
 //     delivery (an announce of the newest post), one the bot is not in is 409
 //     `slack_bot_not_in_channel`. `POST /__mock/slack {botToken?, signingSecret?,
 //     team?: {teamId, teamName}, inbound?, invite?: channelId}` changes the
@@ -47,6 +49,7 @@ import type {
   SlackDelivery,
   SlackDeliveryState,
   SlackInbound,
+  SlackReactionRule,
   SlackSettings,
   SlackState,
   Statement,
@@ -344,7 +347,16 @@ function mockSlack(): MockSlack {
       signingSecret: false,
       token: { ...MOCK_SLACK_TEAM },
       workspace: null,
-      settings: { announceChannel: null, announcePosts: false, dmRecipientOnPost: true, giveFromSlack: false, locale: 'ja' },
+      settings: {
+        announceChannel: null,
+        announcePosts: false,
+        dmRecipientOnPost: true,
+        giveFromSlack: false,
+        locale: 'ja',
+        giveInConversation: false,
+        mentionPointChoices: [10, 30, 50],
+        reactionRules: [],
+      },
       inbound: null,
       lastError: null,
       channels: MOCK_SLACK_CHANNELS.map((channel) => ({ ...channel })),
@@ -370,7 +382,12 @@ function slackJson(): SlackAdmin {
     credential: { botToken: slack.botToken, signingSecret: slack.signingSecret },
     state: slackState(slack),
     workspace: slack.workspace && { ...slack.workspace },
-    settings: { ...slack.settings, announceChannel: slack.settings.announceChannel && { ...slack.settings.announceChannel } },
+    settings: {
+      ...slack.settings,
+      announceChannel: slack.settings.announceChannel && { ...slack.settings.announceChannel },
+      mentionPointChoices: [...slack.settings.mentionPointChoices],
+      reactionRules: slack.settings.reactionRules.map((rule) => ({ ...rule })),
+    },
     inbound: slack.inbound && { ...slack.inbound },
     lastError: slack.lastError && { ...slack.lastError },
     deliveries: {
@@ -383,15 +400,61 @@ function slackJson(): SlackAdmin {
 
 const slackNotConnected = () => fail(409, 'slack_not_connected', 'Slack is not connected; verify the workspace first')
 
-/** PATCH /admin/slack: types, a known channel, then the state and secret gates; applies everything or nothing. */
+/** domain.SlackMaxPointChoices / SlackMaxReactionRules. */
+const MAX_POINT_CHOICES = 5
+const MAX_REACTION_RULES = 8
+
+/** domain.NormalizeSlackEmoji. */
+const normalizeEmoji = (name: string) => {
+  const bare = name.trim().toLowerCase()
+  const tone = bare.indexOf('::')
+  return (tone >= 0 ? bare.slice(0, tone) : bare).replace(/^:+|:+$/g, '')
+}
+
+/** domain.ValidateMentionPointChoices against the Program; the list or an error response. */
+function pointChoicesOf(input: unknown): number[] | Response {
+  const max = mockState().program.maxPointsPerPost
+  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_POINT_CHOICES) return invalid(`mentionPointChoices must contain 1 to ${MAX_POINT_CHOICES} amounts`)
+  if (input.some((points, index) => !Number.isInteger(points) || points < 1 || points > max || input.indexOf(points) !== index)) {
+    return invalid('amounts must be unique and between 1 and the maximum per post')
+  }
+  return input as number[]
+}
+
+/** Emoji through domain.NormalizeSlackEmoji, then domain.ValidateSlackReactionRules against the Program. */
+function reactionRulesOf(input: unknown): SlackReactionRule[] | Response {
+  const program = mockState().program
+  if (!Array.isArray(input)) return invalid('reactionRules must be a list')
+  if (input.length > MAX_REACTION_RULES) return invalid(`reactionRules must contain at most ${MAX_REACTION_RULES} rules`)
+  const rules: SlackReactionRule[] = []
+  for (const item of input as unknown[]) {
+    const row = item as Record<string, unknown> | null
+    const valueKey = row?.valueKey ?? null
+    if (typeof row?.emoji !== 'string' || !Number.isInteger(row.points) || (valueKey !== null && typeof valueKey !== 'string')) return invalid('each rule needs an emoji, points and an optional value key')
+    const emoji = normalizeEmoji(row.emoji)
+    if (emoji === '' || emoji.length > 100 || /[:\s]/.test(emoji)) return invalid('emoji must be a Slack emoji name without colons')
+    if (rules.some((rule) => rule.emoji === emoji)) return invalid('emoji must be unique')
+    const points = row.points as number
+    if (points < 1 || points > program.maxPointsPerPost) return invalid('points must be between 1 and the maximum per post')
+    if (valueKey !== null && !program.values.some((value) => value.key === valueKey)) return fail(400, 'unknown_value', 'A value is not defined by the program')
+    rules.push({ emoji, points, valueKey: valueKey as string | null })
+  }
+  return rules
+}
+
+/** PATCH /admin/slack: types, a known channel, the conversation lists, then the state and secret gates; applies everything or nothing. */
 async function updateSlack(request: Request): Promise<Response> {
   const slack = mockSlack()
   const input = await readJson(request)
   if (!input) return invalid('A JSON object is required')
-  const { announceChannelId, announcePosts, dmRecipientOnPost, giveFromSlack, locale } = input
-  for (const flag of [announcePosts, dmRecipientOnPost, giveFromSlack]) if (flag !== undefined && typeof flag !== 'boolean') return invalid('flags must be booleans')
+  const { announceChannelId, announcePosts, dmRecipientOnPost, giveFromSlack, locale, giveInConversation, mentionPointChoices, reactionRules } = input
+  for (const flag of [announcePosts, dmRecipientOnPost, giveFromSlack, giveInConversation]) if (flag !== undefined && typeof flag !== 'boolean') return invalid('flags must be booleans')
   if (locale !== undefined && locale !== 'ja' && locale !== 'en') return invalid('locale must be ja or en')
   if (announceChannelId !== undefined && announceChannelId !== null && typeof announceChannelId !== 'string') return invalid('announceChannelId must be a string or null')
+  const choices = mentionPointChoices === undefined ? slack.settings.mentionPointChoices : pointChoicesOf(mentionPointChoices)
+  if (choices instanceof Response) return choices
+  const rules = reactionRules === undefined ? slack.settings.reactionRules : reactionRulesOf(reactionRules)
+  if (rules instanceof Response) return rules
   if (slackState(slack) !== 'connected') return slackNotConnected()
   let channel = slack.settings.announceChannel
   if (typeof announceChannelId === 'string') {
@@ -407,9 +470,14 @@ async function updateSlack(request: Request): Promise<Response> {
     dmRecipientOnPost: (dmRecipientOnPost as boolean | undefined) ?? slack.settings.dmRecipientOnPost,
     giveFromSlack: (giveFromSlack as boolean | undefined) ?? slack.settings.giveFromSlack,
     locale: (locale as SlackSettings['locale'] | undefined) ?? slack.settings.locale,
+    giveInConversation: (giveInConversation as boolean | undefined) ?? slack.settings.giveInConversation,
+    mentionPointChoices: [...choices],
+    reactionRules: rules.map((rule) => ({ ...rule })),
   }
   if (next.announcePosts && !next.announceChannel) return invalid('announcePosts requires an announce channel')
-  if (giveFromSlack === true && !slack.signingSecret) return fail(409, 'slack_signing_secret_missing', 'Set the Slack signing secret before giving from Slack')
+  if ((giveFromSlack === true || giveInConversation === true) && !slack.signingSecret) {
+    return fail(409, 'slack_signing_secret_missing', 'Set the Slack signing secret before giving from Slack')
+  }
   slack.settings = next
   return json(slackJson())
 }
