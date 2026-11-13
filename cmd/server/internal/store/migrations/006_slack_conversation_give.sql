@@ -10,7 +10,8 @@ CREATE TABLE slack_reaction_rules (
     position smallint NOT NULL
 );
 
--- RL2: one give per (message, sender, recipient, means). emoji = '' is a mention.
+-- One give per (message, sender, recipient), replacing reaction-give.md's per-emoji RL2.
+-- Emoji is recorded for reference only; emoji = '' is a mention.
 -- The row outlives idempotency_keys, so removing and re-adding a reaction never gives twice.
 CREATE TABLE slack_gives (
     channel_id text NOT NULL,
@@ -22,7 +23,7 @@ CREATE TABLE slack_gives (
     clap_id text REFERENCES claps(id),
     permalink text,
     created_at timestamptz NOT NULL,
-    PRIMARY KEY (channel_id, message_ts, sender_id, recipient_id, emoji)
+    PRIMARY KEY (channel_id, message_ts, sender_id, recipient_id)
 );
 CREATE INDEX slack_gives_post ON slack_gives (post_id);
 

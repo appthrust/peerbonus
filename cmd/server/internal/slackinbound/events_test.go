@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/appthrust/appserver-go/appserver/pgstore/testutil"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slackinbound/slackinboundtest"
@@ -435,6 +436,69 @@ func TestConversationTransientFailureCanRetry(t *testing.T) {
 			} else {
 				require.Len(t, client.messages, 2)
 			}
+		})
+	}
+}
+
+func TestConversationReactionGiveOncePerMessage(t *testing.T) {
+	db, _ := testutil.Database(t, store.Open)
+	s, client, o := conversationFixture()
+	o.Store = db
+	_, err := db.FixSlackWorkspace(t.Context(), *s.integration.Workspace, false, testNow)
+	require.NoError(t, err)
+	rules := []domain.SlackReactionRule{{Emoji: "pb-10", Points: 10}, {Emoji: "pb-30", Points: 30}}
+	channel := &domain.SlackChannel{ID: "CANNOUNCE", Name: "thanks"}
+	_, err = db.UpdateSlackSettings(t.Context(), store.SlackSettingsPatch{
+		GiveInConversation: new(true), ReactionRules: &rules,
+		AnnounceChannel: &channel, AnnouncePosts: new(true), DMRecipientOnPost: new(true),
+	}, testNow)
+	require.NoError(t, err)
+	for _, userID := range []string{"U123", "U456"} {
+		member, err := db.UpsertMember(t.Context(), store.MemberInput{PersonID: userID, DisplayName: userID}, testNow, true)
+		require.NoError(t, err)
+		require.NoError(t, db.LinkMemberSlackUser(t.Context(), member.ID, userID, testNow))
+	}
+	sender, err := db.MemberBySlackUser(t.Context(), "U123")
+	require.NoError(t, err)
+	remaining, err := db.GiveRemaining(t.Context(), sender.ID, testNow)
+	require.NoError(t, err)
+	h := New(o)
+	for _, tc := range []struct {
+		name    string
+		emoji   string
+		restart bool
+	}{
+		{name: "first reaction", emoji: "pb-10"},
+		{name: "same event retry", emoji: "pb-10"},
+		{name: "same event after restart", emoji: "pb-10", restart: true},
+		{name: "another configured emoji", emoji: "pb-30"},
+		{name: "second emoji after restart", emoji: "pb-30", restart: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.restart {
+				h = New(o)
+			}
+			event := reactionEvent()
+			event.Event.Reaction = tc.emoji
+			w := serveEvent(t, h, event)
+			require.Equal(t, http.StatusOK, w.Code)
+			posts, _, err := db.ListPosts(t.Context(), store.PostFilter{}, sender.ID)
+			require.NoError(t, err)
+			require.Len(t, posts, 1)
+			require.Equal(t, 10, posts[0].Points)
+			balance, err := db.GiveRemaining(t.Context(), sender.ID, testNow)
+			require.NoError(t, err)
+			require.Equal(t, remaining-10, balance)
+			var ledger, gives, deliveries int
+			require.NoError(t, db.Do(t.Context(), false, func(tx *store.Tx) error {
+				return tx.SQL.QueryRowContext(t.Context(), `SELECT
+ (SELECT count(*) FROM ledger), (SELECT count(*) FROM slack_gives), (SELECT count(*) FROM slack_deliveries)`).
+					Scan(&ledger, &gives, &deliveries)
+			}))
+			require.Equal(t, 2, ledger)
+			require.Equal(t, 1, gives)
+			require.Equal(t, 2, deliveries)
+			require.Len(t, client.posted, 1)
 		})
 	}
 }

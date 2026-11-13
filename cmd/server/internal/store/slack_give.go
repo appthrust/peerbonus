@@ -30,8 +30,8 @@ type CreateSlackClapInput struct {
 }
 
 // CreateSlackPosts atomically gives to all recipients using the web ledger path.
-// Any existing give for the source and sender replays the entire original batch,
-// even if the requested recipients changed. Replay never consumes a pending give.
+// Any existing give for the message and sender replays the entire original batch,
+// regardless of emoji or requested recipients. Replay never consumes a pending give.
 func (s *Store) CreateSlackPosts(ctx context.Context, in CreateSlackPostsInput) (posts []domain.Post, replayed bool, err error) {
 	err = s.Do(ctx, true, func(tx *Tx) error {
 		posts, err = tx.slackGivenPosts(in.Source, in.SenderID)
@@ -81,7 +81,7 @@ func (s *Store) CreateSlackPosts(ctx context.Context, in CreateSlackPostsInput) 
 
 func (tx *Tx) slackGivenPosts(source domain.SlackGiveSource, senderID string) ([]domain.Post, error) {
 	rows, err := tx.SQL.QueryContext(tx.Context, postSelect+`JOIN slack_gives g ON g.post_id=p.id
- WHERE g.channel_id=$2 AND g.message_ts=$3 AND g.sender_id=$1 AND g.emoji=$4 ORDER BY g.created_at,p.id`, senderID, source.ChannelID, source.MessageTS, source.Emoji)
+ WHERE g.channel_id=$2 AND g.message_ts=$3 AND g.sender_id=$1 ORDER BY g.created_at,p.id`, senderID, source.ChannelID, source.MessageTS)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +104,8 @@ func (s *Store) CreateSlackClap(ctx context.Context, in CreateSlackClapInput) (c
 		var postID string
 		var clapID *string
 		err := tx.SQL.QueryRowContext(ctx, `SELECT post_id,clap_id FROM slack_gives
- WHERE channel_id=$1 AND message_ts=$2 AND sender_id=$3 AND emoji=$4
- AND recipient_id=(SELECT recipient_id FROM posts WHERE id=$5)`, in.Source.ChannelID, in.Source.MessageTS, in.MemberID, in.Source.Emoji, in.PostID).Scan(&postID, &clapID)
+ WHERE channel_id=$1 AND message_ts=$2 AND sender_id=$3
+ AND recipient_id=(SELECT recipient_id FROM posts WHERE id=$4)`, in.Source.ChannelID, in.Source.MessageTS, in.MemberID, in.PostID).Scan(&postID, &clapID)
 		if err == nil {
 			if clapID == nil || postID != in.PostID {
 				return &domain.ValidationError{Field: "source", Msg: "already used for a different action"}

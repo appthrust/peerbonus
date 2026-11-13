@@ -60,6 +60,11 @@ func TestSlackConversationPostsReplayAndPermalink(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, replayed)
 	require.Equal(t, posts, same, "changed recipients must never add another give")
+	in.Source.Emoji = "pb-30"
+	same, replayed, err = db.CreateSlackPosts(t.Context(), in)
+	require.NoError(t, err)
+	require.True(t, replayed)
+	require.Equal(t, posts, same, "a different emoji must replay the entire original give")
 	require.Equal(t, 4, count(t, db, `SELECT count(*) FROM ledger`))
 	require.Equal(t, 4, count(t, db, `SELECT count(*) FROM slack_deliveries`))
 }
@@ -315,6 +320,15 @@ func TestSlackConversationClapAndAnnounce(t *testing.T) {
 	require.Equal(t, first.ID, same.ID)
 	require.Equal(t, 1, updated.ClapCount)
 	require.Equal(t, 5, count(t, db, `SELECT count(*) FROM ledger`))
+	in.Source.Emoji = "pb-30"
+	same, updated, replayed, err = db.CreateSlackClap(t.Context(), in)
+	require.NoError(t, err)
+	require.True(t, replayed)
+	require.Equal(t, first.ID, same.ID)
+	require.Equal(t, 1, updated.ClapCount)
+	require.Equal(t, 5, count(t, db, `SELECT count(*) FROM ledger`))
+	require.Equal(t, 1, count(t, db, `SELECT count(*) FROM slack_gives`))
+	require.Equal(t, 1, count(t, db, `SELECT count(*) FROM slack_deliveries WHERE kind='clap_update'`))
 	in.MemberID = members[0].ID
 	_, _, _, err = db.CreateSlackClap(t.Context(), in)
 	require.ErrorIs(t, err, domain.ErrOwnPost)
@@ -323,7 +337,9 @@ func TestSlackConversationClapAndAnnounce(t *testing.T) {
 	_, _, replayed, err = db.CreateSlackClap(t.Context(), in)
 	require.NoError(t, err)
 	require.True(t, replayed)
-	in.Source.Emoji = "pb-30"
-	_, _, _, err = db.CreateSlackClap(t.Context(), in)
-	require.ErrorIs(t, err, domain.ErrNotFound)
+	in.Source.Emoji = "pb-10"
+	same, _, replayed, err = db.CreateSlackClap(t.Context(), in)
+	require.NoError(t, err)
+	require.True(t, replayed)
+	require.Equal(t, first.ID, same.ID)
 }

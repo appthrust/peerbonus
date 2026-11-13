@@ -12,6 +12,13 @@ Optional Slack credentials enable announcements, direct messages, the
 omitted) or adding an admin-chosen reaction. Slack reaches the server through
 the `slack` inbound endpoint declared in `catalog/entry.yaml` (`/slack/*`).
 
+A sender can give only once from the same Slack message, regardless of the emoji
+or whether the give started with a mention. A mention can still give to up to
+five recipients atomically; retries replay that entire original batch. Stored
+gives are unique by (channel, message timestamp, sender, recipient), with emoji
+retained only for reference. Removing a reaction does not refund points or allow
+another give. This replaces the per-emoji RL2 rule in `reaction-give.md`.
+
 ## Develop
 
 Use Go 1.26 or newer and Bun 1.4.1. The server depends on the public

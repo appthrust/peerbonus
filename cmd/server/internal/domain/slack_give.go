@@ -27,8 +27,8 @@ type SlackReactionRule struct {
 	ValueKey *string
 }
 
-// SlackGiveSource identifies the Slack message a give came from (RL2).
-// Emoji is empty for a mention.
+// SlackGiveSource identifies the Slack message a give came from.
+// Emoji is recorded for reference only, not deduplication; it is empty for a mention.
 type SlackGiveSource struct {
 	ChannelID, MessageTS string
 	Emoji                string
