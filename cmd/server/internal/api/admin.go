@@ -9,6 +9,7 @@ import (
 
 	contract "github.com/appthrust/appserver-go/appserver/contract/directory"
 	"github.com/appthrust/appserver-go/appserver/httpx"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
 )
@@ -105,6 +106,9 @@ func (a *API) closeStatement(s *request) (any, int, error) {
 			return nil, 0, err
 		}
 	}
+	if refreshErr != nil {
+		requestlog.SetOutcome(s.r, "degraded", "directory_refresh_failed")
+	}
 	statement, err = a.store.CloseStatement(s.r.Context(), month, s.now, s.member.ID, refreshErr == nil && len(requested) == 0)
 	return a.renderStatement(statement), 200, err
 }
@@ -122,7 +126,9 @@ func (a *API) exportCSV(s *request) (any, int, error) {
 	}
 	s.w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	s.w.Header().Set("Content-Disposition", `attachment; filename="peerbonus-`+month+`.csv"`)
-	_, _ = s.w.Write([]byte{0xef, 0xbb, 0xbf})
+	if _, err := s.w.Write([]byte{0xef, 0xbb, 0xbf}); err != nil {
+		requestlog.SetOutcome(s.r, "stream_failed", "csv_write_failed")
+	}
 	writer := csv.NewWriter(s.w)
 	_ = writer.Write([]string{"month", "person_id", "email", "display_name", "pending", "points", "unit_value", "currency", "amount"})
 	for _, line := range statement.Lines {
@@ -132,6 +138,7 @@ func (a *API) exportCSV(s *request) (any, int, error) {
 	}
 	writer.Flush()
 	if err := writer.Error(); err != nil {
+		requestlog.SetOutcome(s.r, "stream_failed", "csv_write_failed")
 		log.Printf("peerbonus CSV response failed: %v", err)
 	}
 	return nil, 0, nil
@@ -146,6 +153,9 @@ func (a *API) adminMembers(s *request) (any, int, error) {
 		return nil, 0, err
 	}
 	people, directoryErr := a.loadDirectoryPeople(s)
+	if directoryErr != nil {
+		requestlog.SetOutcome(s.r, "degraded", "directory_unavailable")
+	}
 	result := mergeParticipation(month, activity, people, directoryErr == nil)
 	return a.renderParticipation(result), 200, nil
 }

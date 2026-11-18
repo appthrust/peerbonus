@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
@@ -31,11 +32,13 @@ type giveBlock struct {
 func (h *handler) promptGive(w http.ResponseWriter, r *http.Request, integration domain.SlackIntegration, event slackEvent, senderID string, recipientIDs, recipients []string, message string) {
 	remaining, err := h.store.GiveRemaining(r.Context(), senderID, h.now())
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "balance_lookup_failed")
 		http.Error(w, "Balance unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	period, err := h.store.CurrentPeriod(r.Context(), h.now())
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "period_lookup_failed")
 		http.Error(w, "Period unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -45,6 +48,7 @@ func (h *handler) promptGive(w http.ResponseWriter, r *http.Request, integration
 		SenderID: senderID, RecipientIDs: recipientIDs, Message: message,
 	}, h.now())
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "pending_give_create_failed")
 		http.Error(w, "Pending give unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -85,8 +89,13 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 	}()
 	reply := func(text string, committed bool) {
 		err := h.respond(r.Context(), payload.ResponseURL, ephemeralResponse{ResponseType: "ephemeral", Text: text, ReplaceOriginal: true})
-		if err != nil && !committed {
-			http.Error(w, "Slack response unavailable", http.StatusBadGateway)
+		if err != nil {
+			if committed {
+				requestlog.SetOutcome(r, "degraded", "slack_response_failed")
+			} else {
+				requestlog.SetOutcome(r, "failed", "slack_response_failed")
+				http.Error(w, "Slack response unavailable", http.StatusBadGateway)
+			}
 		}
 	}
 	locale := integration.Locale
@@ -96,6 +105,7 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -116,6 +126,7 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "pending_give_lookup_failed")
 		http.Error(w, "Pending give unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -128,6 +139,7 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 		if errors.Is(err, domain.ErrSlackPendingGiveGone) {
 			reply(pendingGone(locale), false)
 		} else if err != nil {
+			requestlog.SetOutcome(r, "failed", "pending_give_delete_failed")
 			http.Error(w, "Pending give unavailable", http.StatusServiceUnavailable)
 		} else {
 			reply(localized(locale, "キャンセルしました。", "Cancelled."), true)
@@ -136,7 +148,7 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 	}
 	posts, replayed, err := h.store.CreateSlackPosts(r.Context(), store.CreateSlackPostsInput{
 		SenderID: member.ID, RecipientIDs: pending.RecipientIDs, Points: points, Message: pending.Message,
-		Now: h.now(), PendingID: pending.ID, Source: h.giveSource(r.Context(), pending.ChannelID, pending.MessageTS, ""),
+		Now: h.now(), PendingID: pending.ID, Source: h.giveSource(r, pending.ChannelID, pending.MessageTS, ""),
 	})
 	if errors.Is(err, domain.ErrSlackPendingGiveGone) {
 		reply(pendingGone(locale), false)
@@ -146,6 +158,7 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 		if _, text := postError(err, locale); text != "" {
 			reply(text, false)
 		} else {
+			requestlog.SetOutcome(r, "failed", "give_failed")
 			http.Error(w, "Unable to give points", http.StatusServiceUnavailable)
 		}
 		return
@@ -165,6 +178,6 @@ func (h *handler) pendingAction(w http.ResponseWriter, r *http.Request, integrat
 			recipients[i] = mrkdwnEscaper.Replace(post.Recipient.DisplayName)
 		}
 	}
-	h.successReply(r.Context(), integration, pending.ChannelID, thread, giveReplyText(payload.User.ID, strings.Join(recipients, " "), points))
+	h.successReply(r, integration, pending.ChannelID, thread, giveReplyText(payload.User.ID, strings.Join(recipients, " "), points))
 	reply(localized(locale, "ポイントを贈りました。", "Points given."), true)
 }

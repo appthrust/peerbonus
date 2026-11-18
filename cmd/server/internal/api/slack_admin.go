@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/appthrust/appserver-go/appserver/httpx"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
@@ -56,26 +57,31 @@ func newSlackInboundClient(origin, projectID string, transport http.RoundTripper
 	}
 }
 
+func unavailableSlackInbound(r *http.Request) *slackInboundResponse {
+	requestlog.SetOutcome(r, "degraded", "platform_unavailable")
+	return &slackInboundResponse{Reason: new("platform_unavailable")}
+}
+
 func (a *API) discoverSlackInbound(s *request) *slackInboundResponse {
 	if a.slackInbound == nil {
 		return nil
 	}
 	r, err := http.NewRequestWithContext(s.r.Context(), http.MethodGet, a.slackInbound.url, nil)
 	if err != nil {
-		return &slackInboundResponse{Reason: new("platform_unavailable")}
+		return unavailableSlackInbound(s.r)
 	}
 	r.Header.Set("Authorization", s.bearer)
 	r.Header.Set("Accept", "application/json")
 	response, err := a.slackInbound.http.Do(r)
 	if err != nil {
-		return &slackInboundResponse{Reason: new("platform_unavailable")}
+		return unavailableSlackInbound(s.r)
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNotFound {
 		return nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return &slackInboundResponse{Reason: new("platform_unavailable")}
+		return unavailableSlackInbound(s.r)
 	}
 	var endpoint struct {
 		URL        string `json:"url"`
@@ -86,7 +92,7 @@ func (a *API) discoverSlackInbound(s *request) *slackInboundResponse {
 		} `json:"conditions"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&endpoint); err != nil {
-		return &slackInboundResponse{Reason: new("platform_unavailable")}
+		return unavailableSlackInbound(s.r)
 	}
 	result := &slackInboundResponse{Ready: endpoint.Ready}
 	if endpoint.URL != "" {

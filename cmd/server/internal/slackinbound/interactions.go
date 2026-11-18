@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
@@ -74,6 +75,7 @@ func (h *handler) interact(w http.ResponseWriter, r *http.Request, integration d
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -118,6 +120,7 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request, locale domain.S
 	if err != nil {
 		block, message := postError(err, locale)
 		if block == "" {
+			requestlog.SetOutcome(r, "failed", "give_failed")
 			http.Error(w, "Unable to give points", http.StatusServiceUnavailable)
 			return
 		}
@@ -190,6 +193,7 @@ func (h *handler) clap(w http.ResponseWriter, r *http.Request, locale domain.Sla
 		if err != nil {
 			text := clapError(err, locale)
 			if text == "" {
+				requestlog.SetOutcome(r, "failed", "clap_failed")
 				http.Error(w, "Unable to clap", http.StatusServiceUnavailable)
 				return
 			}
@@ -198,6 +202,7 @@ func (h *handler) clap(w http.ResponseWriter, r *http.Request, locale domain.Sla
 		}
 		remaining, err := h.store.GiveRemaining(r.Context(), member.ID, h.now())
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "balance_lookup_failed")
 			http.Error(w, "Balance unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -230,6 +235,7 @@ func (h *handler) ephemeral(w http.ResponseWriter, r *http.Request, payload inte
 		return
 	}
 	if err := h.slack.PostEphemeral(r.Context(), payload.Channel.ID, payload.User.ID, slack.Message{Text: text}); err != nil {
+		requestlog.SetOutcome(r, "failed", "slack_ephemeral_failed")
 		http.Error(w, "Slack unavailable", http.StatusBadGateway)
 		return
 	}
@@ -250,6 +256,7 @@ func (h *handler) options(w http.ResponseWriter, r *http.Request, payload intera
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -260,6 +267,7 @@ func (h *handler) options(w http.ResponseWriter, r *http.Request, payload intera
 	}
 	members, err := h.store.SearchMembers(r.Context(), q, member.ID, 20)
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_search_failed")
 		http.Error(w, "Members unavailable", http.StatusServiceUnavailable)
 		return
 	}

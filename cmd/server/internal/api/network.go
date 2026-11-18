@@ -6,6 +6,7 @@ import (
 
 	contract "github.com/appthrust/appserver-go/appserver/contract/directory"
 	"github.com/appthrust/appserver-go/appserver/httpx"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 )
 
@@ -36,6 +37,9 @@ func (a *API) adminNetwork(s *request) (any, int, error) {
 		} else {
 			people, directoryErr = a.loadDirectoryPeople(s)
 		}
+	}
+	if directoryErr != nil {
+		requestlog.SetOutcome(s.r, "degraded", "directory_unavailable")
 	}
 	result := mergeNetwork(facts, people, groups, group, directoryErr == nil)
 	return renderNetwork(result), 200, nil

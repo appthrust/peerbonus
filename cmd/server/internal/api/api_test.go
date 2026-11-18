@@ -676,10 +676,11 @@ func TestPostSearchAndNewestClappers(t *testing.T) {
 func TestV2InputAndResponseContractWithoutDatabase(t *testing.T) {
 	a := &API{}
 	for _, query := range []string{strings.Repeat("a", 101), strings.Repeat("あ", 101)} {
-		_, _, err := a.posts(&request{r: httptest.NewRequest(http.MethodGet, "/posts?q="+url.QueryEscape(query), nil)})
+		r := httptest.NewRequest(http.MethodGet, "/posts?q="+url.QueryEscape(query), nil)
+		_, _, err := a.posts(&request{r: r})
 		require.Error(t, err)
 		w := httptest.NewRecorder()
-		writeError(w, err)
+		writeError(w, r, err)
 		require.Equal(t, 400, w.Code)
 		require.Contains(t, w.Body.String(), `"error":"invalid_request"`)
 		require.Contains(t, w.Body.String(), "Query must contain at most 100 characters")
