@@ -9,6 +9,7 @@ import (
 	"github.com/appthrust/appserver-go/appserver/platformclient"
 	"github.com/appthrust/appserver-go/appserver/platformenv"
 	"github.com/appthrust/appserver-go/appserver/releaseidentity"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/api"
 	"net/http"
 	"net/url"
@@ -44,7 +45,8 @@ func newHandler(staticDir, upstreamURL, projectID string, peerbonus, inbound htt
 		writeJSON(w, http.StatusOK, map[string]string{"projectId": projectID, "publicUrl": os.Getenv("PEERBONUS_PUBLIC_URL"), "directoryUrl": os.Getenv("PEERBONUS_DIRECTORY_PUBLIC_URL")})
 	})
 	mux.Handle("GET /launcher", launcher.NewHandler(catalog, authenticator.Authenticate))
-	mux.Handle("GET /releasez", releaseidentity.NewHandler("PEERBONUS", func(w http.ResponseWriter, _ *http.Request) {
+	mux.Handle("GET /releasez", releaseidentity.NewHandler("PEERBONUS", func(w http.ResponseWriter, r *http.Request) {
+		requestlog.SetOutcome(r, "unavailable", "release_identity_unavailable")
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("UI release status unavailable\n"))

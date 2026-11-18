@@ -134,7 +134,7 @@ func slackAdminCall(t *testing.T, a *API, fn endpoint, method, path, body string
 	s := &request{r: r, w: w, bearer: r.Header.Get("Authorization"), now: a.now(), member: domain.Member{ID: "admin"}, access: platformclient.ProjectAccess{Roles: platformclient.Roles{IsConsoleAdmin: true}}}
 	result, code, err := a.admin(fn)(s)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, err)
 	} else {
 		httpx.WriteJSON(w, code, result)
 	}
@@ -239,7 +239,7 @@ func TestSlackAdminVerifyFailures(t *testing.T) {
 	require.NotContains(t, string(body), "secret-token")
 	require.Contains(t, string(body), `"detail":"request_failed"`)
 	w := httptest.NewRecorder()
-	writeError(w, domain.ErrSlackTeamChanged)
+	writeError(w, httptest.NewRequest(http.MethodPost, "/admin/slack/verify", nil), domain.ErrSlackTeamChanged)
 	require.Equal(t, 409, w.Code)
 	slackAdminErrorCode(t, w.Body.Bytes(), "slack_team_changed")
 }

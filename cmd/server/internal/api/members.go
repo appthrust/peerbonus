@@ -11,6 +11,7 @@ import (
 	contract "github.com/appthrust/appserver-go/appserver/contract/directory"
 	"github.com/appthrust/appserver-go/appserver/httpx"
 	"github.com/appthrust/appserver-go/appserver/link"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
 )
@@ -31,6 +32,7 @@ func (a *API) resolveSelf(s *request) (bool, error) {
 		if s.member.ID == "" {
 			return false, directoryUnavailable()
 		}
+		requestlog.SetOutcome(s.r, "degraded", "directory_unavailable")
 		in := store.MemberInput{PersonID: s.member.PersonID, Subject: s.member.Subject, DisplayName: s.member.DisplayName, Email: s.member.Email, Pending: s.member.Subject == nil, AvatarVersion: s.member.AvatarVersion}
 		s.member, err = a.store.UpsertMember(s.r.Context(), in, s.now, true)
 		return false, err
@@ -79,6 +81,7 @@ func (a *API) me(s *request) (any, int, error) {
 	}
 	if linked {
 		if err := a.refreshMembers(s); err != nil {
+			requestlog.SetOutcome(s.r, "degraded", "member_refresh_failed")
 			slog.DebugContext(s.r.Context(), "peerbonus member refresh failed", "error", err)
 		}
 	}
@@ -171,6 +174,7 @@ func (a *API) recipient(s *request, personID string) (domain.Member, error) {
 		}
 		member, lookupErr := a.store.MemberByPersonID(s.r.Context(), personID)
 		if lookupErr == nil {
+			requestlog.SetOutcome(s.r, "degraded", "directory_unavailable")
 			return member, nil
 		}
 		if !errors.Is(lookupErr, domain.ErrNotFound) {

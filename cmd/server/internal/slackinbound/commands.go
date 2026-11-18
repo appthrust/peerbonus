@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 )
 
@@ -24,6 +25,7 @@ func (h *handler) command(w http.ResponseWriter, r *http.Request, locale domain.
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -31,6 +33,7 @@ func (h *handler) command(w http.ResponseWriter, r *http.Request, locale domain.
 	case "balance":
 		remaining, err := h.store.GiveRemaining(r.Context(), member.ID, h.now())
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "balance_lookup_failed")
 			http.Error(w, "Balance unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -43,20 +46,24 @@ func (h *handler) command(w http.ResponseWriter, r *http.Request, locale domain.
 		}
 		program, err := h.store.Program(r.Context())
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "program_lookup_failed")
 			http.Error(w, "Program unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		period, err := h.store.CurrentPeriod(r.Context(), h.now())
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "period_lookup_failed")
 			http.Error(w, "Period unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		view, err := json.Marshal(giveModal(member.ID, program, period, locale))
 		if err != nil {
+			requestlog.SetError(r, err)
 			http.Error(w, "Modal unavailable", http.StatusInternalServerError)
 			return
 		}
 		if err := h.slack.OpenView(r.Context(), form.Get("trigger_id"), view); err != nil {
+			requestlog.SetOutcome(r, "failed", "slack_open_view_failed")
 			http.Error(w, "Slack unavailable", http.StatusBadGateway)
 			return
 		}
@@ -76,6 +83,7 @@ type ephemeralResponse struct {
 
 func (h *handler) commandReply(w http.ResponseWriter, r *http.Request, responseURL, text string) {
 	if err := h.respond(r.Context(), responseURL, ephemeralResponse{ResponseType: "ephemeral", Text: text}); err != nil {
+		requestlog.SetOutcome(r, "failed", "slack_response_failed")
 		http.Error(w, "Slack response unavailable", http.StatusBadGateway)
 		return
 	}

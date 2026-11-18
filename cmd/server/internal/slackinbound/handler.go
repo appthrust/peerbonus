@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
@@ -100,6 +101,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 	integration, err := h.store.SlackIntegration(ctx)
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "slack_integration_lookup_failed")
 		http.Error(w, "Slack integration unavailable", http.StatusServiceUnavailable)
 		return
 	}

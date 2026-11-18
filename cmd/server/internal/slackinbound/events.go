@@ -1,7 +1,6 @@
 package slackinbound
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
 	"github.com/appthrust/peerbonus/cmd/server/internal/store"
@@ -105,8 +105,13 @@ func eventThread(event slackEvent) string {
 
 func (h *handler) conversationEphemeral(w http.ResponseWriter, r *http.Request, channel, user, thread string, message slack.Message, committed bool) {
 	message.ThreadTS = thread
-	if err := h.slack.PostEphemeral(r.Context(), channel, user, message); err != nil && !committed {
-		http.Error(w, "Slack unavailable", http.StatusBadGateway)
+	if err := h.slack.PostEphemeral(r.Context(), channel, user, message); err != nil {
+		if committed {
+			requestlog.SetOutcome(r, "degraded", "slack_ephemeral_failed")
+		} else {
+			requestlog.SetOutcome(r, "failed", "slack_ephemeral_failed")
+			http.Error(w, "Slack unavailable", http.StatusBadGateway)
+		}
 	}
 }
 
@@ -125,6 +130,7 @@ func (h *handler) mention(w http.ResponseWriter, r *http.Request, integration do
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -145,6 +151,7 @@ func (h *handler) mention(w http.ResponseWriter, r *http.Request, integration do
 			return
 		}
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 			http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -160,24 +167,27 @@ func (h *handler) mention(w http.ResponseWriter, r *http.Request, integration do
 	}
 	_, replayed, err := h.store.CreateSlackPosts(r.Context(), store.CreateSlackPostsInput{
 		SenderID: sender.ID, RecipientIDs: ids, Points: *points, Message: message, Now: h.now(),
-		Source: h.giveSource(r.Context(), event.Channel, event.TS, ""),
+		Source: h.giveSource(r, event.Channel, event.TS, ""),
 	})
 	if err != nil {
 		if _, text := postError(err, locale); text != "" {
 			reply(text)
 		} else {
+			requestlog.SetOutcome(r, "failed", "give_failed")
 			http.Error(w, "Unable to give points", http.StatusServiceUnavailable)
 		}
 		return
 	}
 	if !replayed {
-		h.successReply(r.Context(), integration, event.Channel, eventThread(event), giveReplyText(event.User, slackMentions(recipients), *points))
+		h.successReply(r, integration, event.Channel, eventThread(event), giveReplyText(event.User, slackMentions(recipients), *points))
 	}
 }
 
-func (h *handler) giveSource(ctx context.Context, channel, ts, emoji string) domain.SlackGiveSource {
+func (h *handler) giveSource(r *http.Request, channel, ts, emoji string) domain.SlackGiveSource {
 	source := domain.SlackGiveSource{ChannelID: channel, MessageTS: ts, Emoji: emoji}
-	if link, err := h.slack.Permalink(ctx, channel, ts); err == nil && link != "" {
+	if link, err := h.slack.Permalink(r.Context(), channel, ts); err != nil {
+		requestlog.SetOutcome(r, "degraded", "slack_permalink_failed")
+	} else if link != "" {
 		source.Permalink = &link
 	}
 	return source
@@ -195,12 +205,14 @@ func giveReplyText(sender, recipients string, points int) string {
 	return fmt.Sprintf("🎉 <@%s> → %s %d pt", sender, recipients, points)
 }
 
-func (h *handler) successReply(ctx context.Context, integration domain.SlackIntegration, channel, thread, text string) {
+func (h *handler) successReply(r *http.Request, integration domain.SlackIntegration, channel, thread, text string) {
 	if integration.AnnouncePosts && integration.AnnounceChannel != nil && integration.AnnounceChannel.ID == channel {
 		return
 	}
 	// The ledger has committed. A reply failure must not retry the give.
-	_, _ = h.slack.PostMessage(ctx, channel, slack.Message{Text: text, ThreadTS: thread})
+	if _, err := h.slack.PostMessage(r.Context(), channel, slack.Message{Text: text, ThreadTS: thread}); err != nil {
+		requestlog.SetOutcome(r, "degraded", "slack_reply_failed")
+	}
 }
 
 func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration domain.SlackIntegration, event slackEvent) {
@@ -228,6 +240,7 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 			return
 		}
 		if err != nil {
+			requestlog.SetOutcome(r, "failed", "post_lookup_failed")
 			http.Error(w, "Post unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -238,6 +251,7 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -250,6 +264,7 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 			if text := clapError(err, locale); text != "" {
 				reply(text, false)
 			} else {
+				requestlog.SetOutcome(r, "failed", "clap_failed")
 				http.Error(w, "Unable to clap", http.StatusServiceUnavailable)
 			}
 			return
@@ -257,6 +272,8 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 		if !replayed {
 			if remaining, err := h.store.GiveRemaining(r.Context(), sender.ID, h.now()); err == nil {
 				reply(fmt.Sprintf(localized(locale, "拍手しました（残り %d pt）", "Clapped (%d pt remaining)."), remaining), true)
+			} else {
+				requestlog.SetOutcome(r, "degraded", "balance_lookup_failed")
 			}
 		}
 		return
@@ -267,6 +284,7 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 		return
 	}
 	if err != nil {
+		requestlog.SetOutcome(r, "failed", "member_lookup_failed")
 		http.Error(w, "Member unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -280,17 +298,18 @@ func (h *handler) reaction(w http.ResponseWriter, r *http.Request, integration d
 	_, replayed, err := h.store.CreateSlackPosts(r.Context(), store.CreateSlackPostsInput{
 		SenderID: sender.ID, RecipientIDs: []string{recipient.ID}, Points: rule.Points, Values: values, Now: h.now(),
 		Message: fmt.Sprintf(localized(locale, ":%s: Slack のメッセージへのリアクション", ":%s: Reaction to a Slack message"), rule.Emoji),
-		Source:  h.giveSource(r.Context(), channel, thread, rule.Emoji),
+		Source:  h.giveSource(r, channel, thread, rule.Emoji),
 	})
 	if err != nil {
 		if _, text := postError(err, locale); text != "" {
 			reply(text, false)
 		} else {
+			requestlog.SetOutcome(r, "failed", "give_failed")
 			http.Error(w, "Unable to give points", http.StatusServiceUnavailable)
 		}
 		return
 	}
 	if !replayed {
-		h.successReply(r.Context(), integration, channel, thread, giveReplyText(event.User, slackMentions([]string{event.ItemUser}), rule.Points))
+		h.successReply(r, integration, channel, thread, giveReplyText(event.User, slackMentions([]string{event.ItemUser}), rule.Points))
 	}
 }

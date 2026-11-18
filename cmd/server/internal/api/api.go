@@ -15,6 +15,7 @@ import (
 	"github.com/appthrust/appserver-go/appserver/identity"
 	"github.com/appthrust/appserver-go/appserver/link"
 	"github.com/appthrust/appserver-go/appserver/platformclient"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/directory"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 	"github.com/appthrust/peerbonus/cmd/server/internal/slack"
@@ -119,7 +120,7 @@ func (a *API) route(pattern string, mutation, needsRoles bool, fn endpoint) {
 		if needsRoles {
 			s.access, err = a.platform.Access(ctx, s.subject, bearer)
 			if err != nil {
-				writeError(w, httpx.Fail(502, "upstream_unavailable", "The platform is temporarily unavailable"))
+				writeError(w, r, httpx.Fail(502, "upstream_unavailable", "The platform is temporarily unavailable"))
 				return
 			}
 		}
@@ -128,7 +129,7 @@ func (a *API) route(pattern string, mutation, needsRoles bool, fn endpoint) {
 			if r.ContentLength != 0 {
 				mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || mediaType != "application/json" {
-					writeError(w, httpx.Invalid("Content-Type must be application/json"))
+					writeError(w, r, httpx.Invalid("Content-Type must be application/json"))
 					return
 				}
 			}
@@ -136,12 +137,12 @@ func (a *API) route(pattern string, mutation, needsRoles bool, fn endpoint) {
 		}
 		s.member, err = a.store.MemberBySubject(ctx, s.subject)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			writeError(w, err)
+			writeError(w, r, err)
 			return
 		}
 		body, status, err := fn(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, err)
 			return
 		}
 		// CSV endpoints have already written the successful response.
@@ -175,11 +176,11 @@ func (a *API) authenticate(w http.ResponseWriter, r *http.Request) (identity.Ide
 	if err != nil {
 		switch {
 		case errors.Is(err, identity.ErrUnavailable):
-			writeError(w, httpx.Fail(503, "identity_unavailable", "The identity provider is temporarily unavailable"))
+			writeError(w, r, httpx.Fail(503, "identity_unavailable", "The identity provider is temporarily unavailable"))
 		case errors.Is(err, identity.ErrRawKeyNotAccepted):
-			writeError(w, httpx.Fail(401, "raw_key_not_accepted", "Exchange the access key for an assertion before calling this API"))
+			writeError(w, r, httpx.Fail(401, "raw_key_not_accepted", "Exchange the access key for an assertion before calling this API"))
 		default:
-			writeError(w, httpx.Fail(401, "unauthenticated", "A valid bearer token is required"))
+			writeError(w, r, httpx.Fail(401, "unauthenticated", "A valid bearer token is required"))
 		}
 		return identity.Identity{}, "", false
 	}
@@ -211,7 +212,7 @@ func decodeBody(s *request, target any, allowEmpty bool) error {
 	return nil
 }
 
-func writeError(w http.ResponseWriter, err error) {
+func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var insufficient *domain.InsufficientPointsError
 	if errors.As(err, &insufficient) {
 		httpx.WriteJSON(w, 409, struct {
@@ -224,6 +225,7 @@ func writeError(w http.ResponseWriter, err error) {
 	}
 	var slackErr *slackAPIError
 	if errors.As(err, &slackErr) {
+		requestlog.SetError(r, httpx.Fail(slackErr.Status, slackErr.Code, slackErr.Message))
 		httpx.WriteJSON(w, slackErr.Status, slackErr)
 		return
 	}

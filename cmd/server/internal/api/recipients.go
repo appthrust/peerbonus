@@ -9,6 +9,7 @@ import (
 
 	contract "github.com/appthrust/appserver-go/appserver/contract/directory"
 	"github.com/appthrust/appserver-go/appserver/link"
+	"github.com/appthrust/appserver-go/appserver/requestlog"
 	"github.com/appthrust/peerbonus/cmd/server/internal/domain"
 )
 
@@ -165,6 +166,7 @@ func (a *API) recipients(s *request) (any, int, error) {
 		if !errors.Is(err, link.ErrUnavailable) && !errors.Is(err, link.ErrAbsent) && !errors.As(err, &denied) {
 			return nil, 0, err
 		}
+		requestlog.SetOutcome(s.r, "degraded", "directory_unavailable")
 		personID := data.Me.PersonID
 		if personID == "" {
 			personID = s.member.PersonID

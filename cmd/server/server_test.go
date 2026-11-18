@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -161,8 +162,20 @@ func TestReleaseFileAndUnavailable(t *testing.T) {
 	handler, err := newHandler(t.TempDir(), "http://127.0.0.1:1", "pj-test", nil, nil, nil)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/releasez", nil))
+	var output bytes.Buffer
+	newServer(":0", handler, &output).Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/releasez?private-query", nil))
 	require.Equal(t, 503, w.Code)
+	require.Equal(t, 1, bytes.Count(output.Bytes(), []byte{'\n'}))
+	require.NotContains(t, output.String(), "private-query")
+	var entry struct {
+		Service, Outcome, Reason string
+		Status                   int
+	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &entry))
+	require.Equal(t, "peerbonus", entry.Service)
+	require.Equal(t, http.StatusServiceUnavailable, entry.Status)
+	require.Equal(t, "unavailable", entry.Outcome)
+	require.Equal(t, "release_identity_unavailable", entry.Reason)
 	stamp := filepath.Join(t.TempDir(), "release.json")
 	require.NoError(t, os.WriteFile(stamp, []byte(`{"sourceRevision":"file-revision"}`), 0600))
 	t.Setenv("PEERBONUS_RELEASE_FILE", stamp)
